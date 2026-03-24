@@ -92,6 +92,16 @@ export function generateClaude(
   parts.push('- Move completed items from "In Progress" to "Recently Completed"');
   parts.push('- Add any new known issues discovered');
   parts.push('');
+  parts.push('### When asked to implement a new feature');
+  parts.push('1. Suggest creating a spec first: "Let me create a spec for this. Run `/spec` to define the requirements."');
+  parts.push('2. Do not start coding without an approved spec in `specs/`');
+  parts.push('3. If the user wants to proceed without a spec, at minimum document what will be built in a module file first');
+  parts.push('');
+  parts.push('### Auto-checkpoint');
+  parts.push('After completing any significant implementation:');
+  parts.push('1. Stage changes and create a checkpoint: `git add -A && git commit -m "checkpoint: {description}" && git tag cp-{name}`');
+  parts.push('2. This creates a restore point the user can rollback to');
+  parts.push('');
   parts.push('### Before creating new code');
   parts.push('1. Check `.agentctx/context/modules/` for existing module files — reuse exported functions instead of creating duplicates');
   parts.push('2. Check `.agentctx/context/architecture.md` for directory conventions — put new files in the right place');

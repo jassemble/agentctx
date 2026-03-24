@@ -4,22 +4,75 @@ Implement a feature from an approved spec.
 
 1. Read the spec file: $ARGUMENTS
    - If no argument provided, check `specs/INDEX.md` for approved specs and ask which one
-   - If the spec status is `draft`, STOP and tell the user it needs approval first
+   - **Enforcement gate**: Check the spec's `status` field in the frontmatter:
+     - If `draft` — STOP. Tell the user: "This spec is still a draft. Run `/approve {spec-path}` to approve it before implementation. Approval ensures requirements are reviewed and agreed upon."
+     - If `in-progress` — warn the user it's already being implemented. Ask if they want to continue.
+     - If `completed` — tell the user it's already done. Ask if they want to re-implement.
+     - Only `approved` status should proceed without warning.
+
 2. Read the project context:
    - Read `CLAUDE.md` for conventions and patterns
    - Read relevant module files in `.agentctx/context/modules/` for existing code
    - Read `.agentctx/context/architecture.md` for structure conventions
-3. Create a feature branch: `git checkout -b feat/{NNNN}-{name}`
-4. Rename the spec file from `approved-*` to `in-progress-*` and update INDEX.md
-5. Convert acceptance criteria into a task list
+   - If the spec has a `parent_spec` field, read the parent spec for full context
+
+3. Create a feature branch (if not already on one):
+   ```bash
+   git checkout -b feat/{NNNN}-{name}
+   ```
+
+4. Transition spec status to `in-progress`:
+   - Rename the spec file from `approved-{NNNN}-{name}.md` to `in-progress-{NNNN}-{name}.md`
+     - Use `git mv` if the file is tracked, otherwise regular mv
+   - Update the `status` field in the spec frontmatter to `in-progress`
+   - Update `specs/INDEX.md` status column to `in-progress`
+
+5. Convert acceptance criteria into a task list and plan the implementation order
+
 6. Implement each task:
    - Follow conventions from CLAUDE.md
    - Reuse existing functions from modules/ documentation
    - Put new files in the correct location per architecture.md
-7. After implementation:
-   - Create or update the module file in `.agentctx/context/modules/{feature}.md`
+   - After each significant subtask, consider a mini-checkpoint
+
+7. After implementation, update module files:
+   - Create or update `.agentctx/context/modules/{feature}.md` with:
+     - Key files created/modified
+     - Exported functions/components
+     - Dependencies on other modules
    - Document: key files, exports, dependencies
-   - Update `.agentctx/context/status.md`
+   - Update `.agentctx/context/status.md` with the completed work
    - Log any architectural decisions in `.agentctx/context/decisions.md`
-8. Rename spec from `in-progress-*` to `completed-*` and update INDEX.md
-9. Print a summary of what was implemented and which files were changed
+
+8. Transition spec status to `completed`:
+   - Rename the spec file from `in-progress-{NNNN}-{name}.md` to `completed-{NNNN}-{name}.md`
+     - Use `git mv` if the file is tracked, otherwise regular mv
+   - Update the `status` field in the spec frontmatter to `completed`
+   - Update `specs/INDEX.md` status column to `completed`
+
+9. Auto-checkpoint:
+   ```bash
+   git add -A
+   git commit -m "checkpoint: spec-{NNNN} implementation complete"
+   git tag cp-{NNNN}-done
+   ```
+
+10. Print a summary:
+    ```
+    Implementation complete: {title}
+    Spec: specs/completed-{NNNN}-{name}.md
+    Checkpoint: cp-{NNNN}-done
+    Module file: .agentctx/context/modules/{feature}.md
+
+    Files changed:
+    - {list of files created/modified}
+
+    Next step: Run /review specs/completed-{NNNN}-{name}.md to validate
+    ```
+
+## Important
+- NEVER implement from a draft spec — approval is required
+- Always create a feature branch before making changes
+- Update module files so future features can discover and reuse this code
+- The auto-checkpoint at the end creates a rollback point: `cp-{NNNN}-done`
+- If implementation fails partway, the user can `/rollback` to the pre-implementation state
