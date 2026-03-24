@@ -50,4 +50,14 @@ program
     await statusCommand();
   });
 
+program
+  .command('serve')
+  .description('Serve all project markdown files on a local web server')
+  .option('-p, --port <port>', 'Port to serve on', '4000')
+  .option('--no-open', 'Don\'t open browser automatically')
+  .action(async (options) => {
+    const { serveCommand } = await import('./commands/serve.js');
+    await serveCommand(options);
+  });
+
 program.parse();
