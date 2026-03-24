@@ -1,0 +1,34 @@
+version: 1
+project:
+  name: "simple-project"
+  language: typescript
+  framework: nextjs
+
+context:
+  - context/principles.md
+  - context/testing.md
+
+outputs:
+  claude:
+    enabled: true
+    path: CLAUDE.md
+    max_tokens: 8000
+    sections:
+      include: []
+      exclude: [workflows]
+  cursorrules:
+    enabled: true
+    path: .cursorrules
+    max_tokens: 4000
+
+references:
+  - path: docs/API.md
+    label: "API Documentation"
+    inline: false
+
+lint:
+  token_budgets: true
+  broken_refs: true
+  freshness:
+    enabled: true
+    stale_days: 30
