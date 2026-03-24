@@ -4,6 +4,7 @@ import { checkBrokenRefs } from './checks/broken-refs.js';
 import { checkTokenBudget } from './checks/token-budget.js';
 import { checkSchema } from './checks/schema.js';
 import { checkOutputDrift } from './checks/output-drift.js';
+import { checkAi } from './checks/ai.js';
 
 export interface LintResult {
   code: string;
@@ -17,21 +18,25 @@ export async function runLintChecks(
   config: AgentCtxConfig,
   modules: ContextModule[],
   basePath: string,
+  options?: { ai?: boolean },
 ): Promise<LintResult[]> {
   const results: LintResult[] = [];
 
-  const [schemaResults, brokenRefResults, tokenBudgetResults, driftResults] =
-    await Promise.all([
-      checkSchema(basePath),
-      checkBrokenRefs(config, modules, basePath),
-      checkTokenBudget(config, modules),
-      checkOutputDrift(config, modules, basePath),
-    ]);
+  const checks = [
+    checkSchema(basePath),
+    checkBrokenRefs(config, modules, basePath),
+    checkTokenBudget(config, modules),
+    checkOutputDrift(config, modules, basePath),
+  ];
 
-  results.push(...schemaResults);
-  results.push(...brokenRefResults);
-  results.push(...tokenBudgetResults);
-  results.push(...driftResults);
+  if (options?.ai) {
+    checks.push(checkAi(modules));
+  }
+
+  const allResults = await Promise.all(checks);
+  for (const r of allResults) {
+    results.push(...r);
+  }
 
   return results;
 }

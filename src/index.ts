@@ -36,6 +36,7 @@ program
   .command('lint')
   .description('Validate context quality')
   .option('--strict', 'Exit non-zero on warnings')
+  .option('--ai', 'Run AI-powered checks using claude CLI')
   .option('--format <format>', 'Output format: text, json, github', 'text')
   .action(async (options) => {
     const { lintCommand } = await import('./commands/lint.js');

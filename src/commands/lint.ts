@@ -7,6 +7,7 @@ import { runLintChecks, type LintResult } from '../linter/index.js';
 export async function lintCommand(options: {
   strict?: boolean;
   format?: string;
+  ai?: boolean;
 }): Promise<void> {
   const configPath = findConfigPath();
   if (!configPath) {
@@ -18,7 +19,10 @@ export async function lintCommand(options: {
   const agentctxDir = dirname(configPath);
 
   const modules = await loadContextModules(config, agentctxDir);
-  const results = await runLintChecks(config, modules, agentctxDir);
+  if (options.ai) {
+    logger.info('Running AI-powered analysis (using claude CLI)...\n');
+  }
+  const results = await runLintChecks(config, modules, agentctxDir, { ai: options.ai });
 
   if (options.format === 'json') {
     console.log(JSON.stringify(results, null, 2));
