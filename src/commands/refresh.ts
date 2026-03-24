@@ -54,27 +54,34 @@ function readExistingModules(modulesDir: string): { filename: string; content: s
   return modules;
 }
 
-const REFRESH_SYSTEM_PROMPT = `You are a project context maintainer. Given recent git changes and existing module documentation files, determine which module files need updating or creating.
+const REFRESH_SYSTEM_PROMPT = `You are a project context maintainer and validator. Given recent git changes and existing module documentation files, do two things:
 
-Analyze the git diff stats and commit log to understand what changed. Then look at existing module files to see what documentation exists.
+1. VALIDATE existing modules — check if the file paths, exports, and descriptions they reference are still accurate given the recent changes
+2. UPDATE or CREATE modules based on what changed
 
-Return ONLY valid JSON — an array of objects with this schema:
+Return ONLY valid JSON — an array of objects:
 [
   {
     "filename": "auth.md",
-    "action": "update",
-    "content": "# Auth\\n\\n## Key Files\\n- \`src/auth/login.ts\` — handles login flow\\n..."
+    "action": "update" | "create" | "keep",
+    "reason": "Brief explanation",
+    "content": "# Auth\\n\\n## Key Files\\n..."
   }
 ]
 
+Actions:
+- "update": Existing module is outdated — file paths changed, exports renamed, new files added. Content = corrected full module. Reason = what changed.
+- "create": New feature area not yet documented. Content = full new module doc.
+- "keep": Existing module is still accurate after these changes. Content = "". Reason = "still accurate".
+
 Rules:
-- action must be "update" (for existing modules that need changes) or "create" (for new modules)
-- Only include modules that actually need changes based on the git diff
-- Each module should document: Key Files, Exports, Dependencies, and Notes
-- Use \\n for newlines in the content field (valid JSON string)
-- Be specific — reference actual file paths from the diff
-- If nothing needs updating, return an empty array []
-- Keep modules focused and concise`;
+- Check every file path in existing modules against the git diff — if a file was renamed/moved/deleted, the module MUST be updated
+- If exports were added/removed/renamed, update the module
+- Only include entries for modules affected by the recent changes
+- Each module should document: Key Files, Exports, Dependencies, Notes
+- Use \\n for newlines in content (valid JSON string)
+- Reference actual file paths from the diff
+- If nothing needs changes, return an empty array []`;
 
 export async function refreshCommand(options: RefreshOptions): Promise<void> {
   const configPath = findConfigPath();

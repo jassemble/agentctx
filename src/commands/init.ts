@@ -222,10 +222,10 @@ async function generateAiModules(
       return tree;
     }
 
+    // Gather codebase context
     const sections: string[] = [];
     sections.push(`## Directory Structure\n\`\`\`\n${getTree(projectRoot)}\`\`\``);
 
-    // Package manifest
     for (const manifest of ['package.json', 'pyproject.toml', 'go.mod', 'Cargo.toml']) {
       const mp = join(projectRoot, manifest);
       if (existsSync(mp)) {
@@ -234,7 +234,6 @@ async function generateAiModules(
       }
     }
 
-    // Pick source files
     for (const dir of ['src', 'app', 'lib', 'pages']) {
       const d = join(projectRoot, dir);
       if (!existsSync(d)) continue;
@@ -245,46 +244,109 @@ async function generateAiModules(
           if (/\.(test|spec|config)\./i.test(entry.name)) continue;
           const content = readFileSync(join(d, entry.name), 'utf-8').split('\n').slice(0, 150).join('\n');
           sections.push(`## ${dir}/${entry.name}\n\`\`\`\n${content}\`\`\``);
-          if (++count >= 3) break;
+          if (++count >= 5) break;
         }
       } catch { /* ignore */ }
     }
 
-    const MODULES_PROMPT = `You are a codebase analyzer. Given a project's structure and source code, generate module documentation files that describe WHAT EXISTS in the codebase for AI coding assistants.
+    // Read existing module files for reconciliation
+    const existingModules: { filename: string; content: string }[] = [];
+    if (existsSync(modulesDir)) {
+      try {
+        for (const entry of readdirSync(modulesDir, { withFileTypes: true })) {
+          if (entry.isFile() && entry.name.endsWith('.md')) {
+            const content = readFileSync(join(modulesDir, entry.name), 'utf-8');
+            existingModules.push({ filename: entry.name, content });
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    // Also check for non-module context files that describe code (architecture.md etc.)
+    const contextMdFiles = ['architecture.md', 'testing.md', 'style.md', 'patterns.md'];
+    for (const fname of contextMdFiles) {
+      const fpath = join(contextDir, fname);
+      if (existsSync(fpath)) {
+        try {
+          const content = readFileSync(fpath, 'utf-8');
+          // Only include if it's been customized (more than just the scaffold template)
+          if (content.split('\n').filter(l => l.trim() && !l.startsWith('<!--')).length > 5) {
+            existingModules.push({ filename: fname, content });
+          }
+        } catch { /* ignore */ }
+      }
+    }
+
+    let existingSection = '';
+    if (existingModules.length > 0) {
+      existingSection = '\n\n## EXISTING MODULE FILES (review these for accuracy)\n' +
+        existingModules.map(m => `### ${m.filename}\n\`\`\`markdown\n${m.content}\n\`\`\``).join('\n\n');
+    }
+
+    const MODULES_PROMPT = `You are a codebase analyzer and documentation reconciler. You have two jobs:
+
+1. VALIDATE existing module docs against the actual code — are they still accurate?
+2. GENERATE new module docs for undocumented feature areas.
 
 Produce ONLY valid JSON — an array of objects:
 [
   {
     "filename": "auth.md",
-    "title": "Auth Module",
-    "content": "# Auth Module\\n\\n## Key Files\\n- \`src/auth/login.ts\` — handles login flow\\n\\n## Exports\\n- \`useAuth()\` — hook returning { user, login, logout }\\n\\n## Dependencies\\n- Uses: database, email\\n- Used by: dashboard\\n\\n## Notes\\n- JWT-based, tokens in httpOnly cookies"
+    "action": "create" | "update" | "keep",
+    "reason": "Brief explanation of why this action",
+    "content": "# Auth Module\\n\\n## Key Files\\n..."
   }
 ]
 
-Rules:
-- Generate 2-6 module files based on the actual feature areas you see
-- Each module should document: Key Files, Exports (functions/components), Dependencies, Notes
-- Reference REAL file paths and function names from the code
-- Group by feature area (auth, dashboard, api, database, etc.), not by file type
-- Only document what actually exists — don't invent
-- content field uses \\n for newlines (valid JSON string)`;
+Actions:
+- "create": No existing doc for this feature area. Content = full new module doc.
+- "update": Existing doc is outdated/inaccurate. Content = corrected version. Reason must explain what changed.
+- "keep": Existing doc is accurate. Content = empty string "". Don't waste tokens repeating it.
 
-    const payload = sections.join('\n\n');
+Rules:
+- Check every file path and export mentioned in existing docs — do they still exist in the code?
+- If a file was renamed/moved, update the path
+- If exports changed (renamed, removed, new ones added), update the doc
+- For new modules: document Key Files, Exports, Dependencies, Notes
+- Reference REAL file paths and function names from the code
+- Group by feature area, not file type
+- Only document what actually exists — don't invent
+- content field uses \\n for newlines (valid JSON string)
+- Generate 2-6 total entries (creates + updates). Skip "keep" entries to save tokens unless there are existing docs to validate.`;
+
+    const payload = sections.join('\n\n') + existingSection;
     const stdout = await spawnWithStdin('claude', [
       '--print', '--model', 'haiku', '--system-prompt', MODULES_PROMPT,
     ], payload, 60000);
 
     const jsonMatch = stdout.match(/\[[\s\S]*\]/);
     if (jsonMatch) {
-      const modules = JSON.parse(jsonMatch[0]) as { filename: string; title: string; content: string }[];
+      const results = JSON.parse(jsonMatch[0]) as { filename: string; action: string; reason?: string; content: string }[];
       await mkdir(modulesDir, { recursive: true });
-      for (const mod of modules) {
+
+      let created = 0, updated = 0, kept = 0;
+      for (const mod of results) {
+        if (mod.action === 'keep') { kept++; continue; }
+        if (!mod.content || mod.content.trim() === '') continue;
+
         const fname = mod.filename.endsWith('.md') ? mod.filename : `${mod.filename}.md`;
         await writeFile(join(modulesDir, fname), mod.content, 'utf-8');
         const rp = `context/modules/${fname}`;
         if (!contextFiles.includes(rp)) contextFiles.push(rp);
+
+        if (mod.action === 'update') {
+          updated++;
+          logger.dim(`  Updated ${fname}: ${mod.reason || 'content changed'}`);
+        } else {
+          created++;
+        }
       }
-      s.stop(`Generated ${modules.length} module file(s) from codebase`);
+
+      const parts = [];
+      if (created > 0) parts.push(`${created} created`);
+      if (updated > 0) parts.push(`${updated} updated`);
+      if (kept > 0) parts.push(`${kept} verified`);
+      s.stop(`Modules: ${parts.join(', ') || 'no changes needed'}`);
     } else {
       s.stop('Could not parse AI response — skipping module generation');
     }
