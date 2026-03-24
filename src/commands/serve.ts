@@ -58,20 +58,38 @@ function buildTree(files: string[]): TreeNode {
     }
   }
 
+  compactTree(root);
   return root;
+}
+
+/** VS Code-style: merge single-child folder chains into "a/b/c" */
+function compactTree(node: TreeNode): void {
+  for (let i = 0; i < node.children.length; i++) {
+    const child = node.children[i];
+    if (child.path) continue; // skip files
+
+    // Keep compacting while this folder has exactly one child and it's a folder
+    while (child.children.length === 1 && !child.children[0].path) {
+      const grandchild = child.children[0];
+      child.name = child.name + ' / ' + grandchild.name;
+      child.children = grandchild.children;
+    }
+
+    compactTree(child);
+  }
 }
 
 function renderTree(node: TreeNode, depth: number = 0): string {
   let html = '';
+  const indent = Math.min(depth, 4) * 8; // 8px per level, cap at 4
 
   // Sort: folders first, then files
   const folders = node.children.filter(c => !c.path);
   const files = node.children.filter(c => c.path);
 
   for (const folder of folders) {
-    const indent = depth * 12;
     html += `<div class="tree-folder" style="padding-left:${indent}px">
-      <div class="tree-folder-head" onclick="this.parentElement.classList.toggle('collapsed')">
+      <div class="tree-folder-head" onclick="this.parentElement.classList.toggle('collapsed')" title="${escapeHTML(folder.name)}">
         <svg class="chevron" width="12" height="12" viewBox="0 0 12 12"><path d="M4.5 2L8.5 6L4.5 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span class="tree-folder-name">${escapeHTML(folder.name)}</span>
       </div>
@@ -80,9 +98,8 @@ function renderTree(node: TreeNode, depth: number = 0): string {
   }
 
   for (const file of files) {
-    const indent = depth * 12;
     const name = file.name.replace(/\.md$/i, '');
-    html += `<a class="tree-file" href="#" data-path="${escapeHTML(file.path!)}" style="padding-left:${indent + 20}px">
+    html += `<a class="tree-file" href="#" data-path="${escapeHTML(file.path!)}" style="padding-left:${indent + 18}px" title="${escapeHTML(file.path!)}">
       <svg class="doc-icon" width="14" height="14" viewBox="0 0 16 16"><path d="M3 1.5A1.5 1.5 0 014.5 0h5.379a1.5 1.5 0 011.06.44l2.122 2.12A1.5 1.5 0 0113.5 3.622V14.5a1.5 1.5 0 01-1.5 1.5h-8A1.5 1.5 0 013 14.5v-13z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 7h5M5.5 9.5h5M5.5 12h3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
       <span>${escapeHTML(name)}</span>
     </a>`;
