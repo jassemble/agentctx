@@ -1,4 +1,4 @@
-import { resolve, join, basename, extname } from 'node:path';
+import { resolve, join, basename, extname, dirname } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { stringify as toYaml } from 'yaml';
@@ -181,6 +181,11 @@ async function initWithSkills(
   agentctxDir: string,
   contextDir: string,
 ): Promise<void> {
+  // Always include workflow skill
+  if (!skills.includes('workflow')) {
+    skills = ['workflow', ...skills];
+  }
+
   const { resolveSkills, composeSkills } = await import('../core/skills.js');
 
   const s = p.spinner();
@@ -216,6 +221,25 @@ async function initWithSkills(
 
   const livingPaths = await createLivingContext(contextDir);
   contextFiles.push(...livingPaths);
+
+  // Write .claude/commands/ from skills
+  if (composed.commands.length > 0) {
+    const cmdDir = join(projectRoot, '.claude', 'commands');
+    await mkdir(cmdDir, { recursive: true });
+    for (const cmd of composed.commands) {
+      await writeFile(join(cmdDir, cmd.relativePath), cmd.content, 'utf-8');
+    }
+    logger.success(`.claude/commands/ — ${composed.commands.length} workflow commands`);
+  }
+
+  // Write scaffold files from skills
+  if (composed.scaffolds.length > 0) {
+    for (const scaffold of composed.scaffolds) {
+      const destPath = join(projectRoot, scaffold.dest);
+      await mkdir(dirname(destPath), { recursive: true });
+      await writeFile(destPath, scaffold.content, 'utf-8');
+    }
+  }
 
   // Build config
   const config: Record<string, unknown> = {
@@ -319,6 +343,9 @@ async function initInteractive(
 
       if (p.isCancel(skillSelection)) { p.cancel('Init cancelled.'); process.exit(0); }
       selectedSkills = skillSelection as string[];
+      if (selectedSkills.length > 0 && !selectedSkills.includes('workflow')) {
+        selectedSkills = ['workflow', ...selectedSkills];
+      }
     }
   } catch {
     // Skills module not available yet, skip
@@ -374,6 +401,25 @@ async function initInteractive(
         const filePath = join(contextDir, file.relativePath);
         await writeFile(filePath, file.content, 'utf-8');
         contextFiles.push(`context/${file.relativePath}`);
+      }
+
+      // Write .claude/commands/ from skills
+      if (composed.commands.length > 0) {
+        const cmdDir = join(projectRoot, '.claude', 'commands');
+        await mkdir(cmdDir, { recursive: true });
+        for (const cmd of composed.commands) {
+          await writeFile(join(cmdDir, cmd.relativePath), cmd.content, 'utf-8');
+        }
+        logger.success(`.claude/commands/ — ${composed.commands.length} workflow commands`);
+      }
+
+      // Write scaffold files from skills
+      if (composed.scaffolds.length > 0) {
+        for (const scaffold of composed.scaffolds) {
+          const destPath = join(projectRoot, scaffold.dest);
+          await mkdir(dirname(destPath), { recursive: true });
+          await writeFile(destPath, scaffold.content, 'utf-8');
+        }
       }
     } catch (err) {
       logger.warn(`Could not apply skills: ${err instanceof Error ? err.message : err}`);

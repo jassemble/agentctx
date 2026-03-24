@@ -16,6 +16,11 @@ export const SkillYamlSchema = z.object({
   provides: z.array(z.string()).default([]),
   conflicts: z.array(z.string()).default([]),
   context: z.array(z.string()),
+  commands: z.array(z.string()).default([]),
+  scaffolds: z.array(z.object({
+    src: z.string(),
+    dest: z.string(),
+  })).default([]),
 });
 
 export type SkillYaml = z.infer<typeof SkillYamlSchema>;
@@ -146,8 +151,15 @@ export async function loadSkillModules(skill: ResolvedSkill): Promise<SkillModul
 
 export async function composeSkills(
   skills: ResolvedSkill[],
-): Promise<{ files: Array<{ relativePath: string; content: string }>; skillNames: string[] }> {
+): Promise<{
+  files: Array<{ relativePath: string; content: string }>;
+  commands: Array<{ relativePath: string; content: string }>;
+  scaffolds: Array<{ dest: string; content: string }>;
+  skillNames: string[];
+}> {
   const fileMap = new Map<string, { relativePath: string; content: string }>();
+  const commands: Array<{ relativePath: string; content: string }> = [];
+  const scaffolds: Array<{ dest: string; content: string }> = [];
 
   for (const skill of skills) {
     const modules = await loadSkillModules(skill);
@@ -162,10 +174,41 @@ export async function composeSkills(
         content: mod.content,
       });
     }
+
+    // Load command files
+    for (const cmdPath of skill.yaml.commands) {
+      const fullPath = resolve(skill.dir, cmdPath);
+      const filename = basename(cmdPath);
+      let content: string;
+      try {
+        content = await readFile(fullPath, 'utf-8');
+      } catch {
+        throw new Error(
+          `Skill command file not found: ${cmdPath} in skill "${skill.yaml.name}" (resolved to ${fullPath})`,
+        );
+      }
+      commands.push({ relativePath: filename, content });
+    }
+
+    // Load scaffold files
+    for (const scaffold of skill.yaml.scaffolds) {
+      const fullPath = resolve(skill.dir, scaffold.src);
+      let content: string;
+      try {
+        content = await readFile(fullPath, 'utf-8');
+      } catch {
+        throw new Error(
+          `Skill scaffold file not found: ${scaffold.src} in skill "${skill.yaml.name}" (resolved to ${fullPath})`,
+        );
+      }
+      scaffolds.push({ dest: scaffold.dest, content });
+    }
   }
 
   return {
     files: Array.from(fileMap.values()),
+    commands,
+    scaffolds,
     skillNames: skills.map((s) => s.yaml.name),
   };
 }

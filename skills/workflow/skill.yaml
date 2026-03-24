@@ -1,0 +1,18 @@
+name: workflow
+description: "Spec-driven AI development workflow with Claude Code commands"
+version: 1.0.0
+tags: [workflow, specs, commands]
+provides: [spec-workflow, claude-commands]
+conflicts: []
+context:
+  - context/workflow.md
+commands:
+  - commands/spec.md
+  - commands/implement.md
+  - commands/review.md
+  - commands/refresh-context.md
+scaffolds:
+  - src: scaffolds/INDEX.md
+    dest: specs/INDEX.md
+  - src: scaffolds/feature-spec-template.md
+    dest: specs/_templates/feature-spec.md
