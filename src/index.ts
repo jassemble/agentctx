@@ -64,8 +64,18 @@ program
   });
 
 program
+  .command('sync')
+  .description('Keep context current — validate modules, update skills, regenerate outputs')
+  .option('--add <skills...>', 'Add new skills')
+  .option('--no-ai', 'Skip AI validation')
+  .action(async (options) => {
+    const { syncCommand } = await import('./commands/sync.js');
+    await syncCommand(options);
+  });
+
+program
   .command('refresh')
-  .description('Update context from recent code changes')
+  .description('Update context from recent git changes (use sync for full update)')
   .option('--no-ai', 'Only show what changed, don\'t auto-update')
   .action(async (options) => {
     const { refreshCommand } = await import('./commands/refresh.js');
