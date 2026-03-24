@@ -1,0 +1,11 @@
+name: test-skill-a
+description: A test skill for unit tests
+version: "1.0.0"
+language: typescript
+tags:
+  - testing
+provides:
+  - principles
+conflicts: []
+context:
+  - context/principles.md

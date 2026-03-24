@@ -1,26 +1,10 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { ContextModule } from '../../core/context.js';
 import type { LintResult } from '../index.js';
+import { spawnWithStdin } from '../../utils/exec.js';
 
 const execFileAsync = promisify(execFile);
-
-function spawnWithStdin(cmd: string, args: string[], input: string, timeout: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { timeout });
-    const chunks: string[] = [];
-    const errChunks: string[] = [];
-    proc.stdout.on('data', (d) => chunks.push(d.toString()));
-    proc.stderr.on('data', (d) => errChunks.push(d.toString()));
-    proc.on('close', (code) => {
-      if (code === 0) resolve(chunks.join(''));
-      else reject(new Error(errChunks.join('') || `Exit code ${code}`));
-    });
-    proc.on('error', reject);
-    proc.stdin.write(input);
-    proc.stdin.end();
-  });
-}
 
 interface AiFinding {
   check: string;

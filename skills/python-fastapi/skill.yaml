@@ -1,0 +1,11 @@
+name: python-fastapi
+description: "FastAPI application patterns and conventions"
+version: 1.0.0
+language: python
+tags: [python, api, backend, fastapi]
+provides: [endpoints, models, project-structure]
+conflicts: [django, flask]
+context:
+  - context/endpoints.md
+  - context/models.md
+  - context/project-structure.md

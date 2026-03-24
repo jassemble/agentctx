@@ -1,0 +1,10 @@
+name: test-skill-b
+description: Another test skill for unit tests
+version: "1.0.0"
+tags:
+  - testing
+provides:
+  - style
+conflicts: []
+context:
+  - context/style.md

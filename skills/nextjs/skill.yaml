@@ -1,0 +1,11 @@
+name: nextjs
+description: "Next.js 14+ App Router conventions and patterns"
+version: 1.0.0
+language: typescript
+tags: [react, frontend, ssr, fullstack]
+provides: [routing, data-fetching, project-structure]
+conflicts: [remix, sveltekit, nuxt]
+context:
+  - context/routing.md
+  - context/data-fetching.md
+  - context/project-structure.md

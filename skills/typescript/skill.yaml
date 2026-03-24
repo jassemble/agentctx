@@ -1,0 +1,11 @@
+name: typescript
+description: "TypeScript patterns and conventions"
+version: 1.0.0
+language: typescript
+tags: [typescript, types, patterns]
+provides: [type-patterns, error-handling, conventions]
+conflicts: []
+context:
+  - context/type-patterns.md
+  - context/error-handling.md
+  - context/project-conventions.md

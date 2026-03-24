@@ -11,6 +11,7 @@ function makeConfig(context: string[]): AgentCtxConfig {
   return {
     version: 1,
     project: { name: 'test' },
+    skills: [],
     context,
     outputs: {},
     references: [],

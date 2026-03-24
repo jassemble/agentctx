@@ -1,0 +1,9 @@
+name: test-skill-b-dup
+description: Skill with same filename as test-skill-a for duplicate testing
+version: "1.0.0"
+tags:
+  - testing
+provides: []
+conflicts: []
+context:
+  - context/principles.md

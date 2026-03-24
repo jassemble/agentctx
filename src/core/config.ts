@@ -52,6 +52,7 @@ export const AgentCtxConfigSchema = z.object({
     language: z.string().optional(),
     framework: z.string().optional(),
   }),
+  skills: z.array(z.string()).default([]),
   context: z.array(z.string()).default([]),
   outputs: z.record(z.string(), OutputTargetSchema).default({}),
   references: z.array(ReferenceSchema).default([]),

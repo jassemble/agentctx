@@ -1,0 +1,10 @@
+name: tailwind
+description: "Tailwind CSS utility-first patterns"
+version: 1.0.0
+language: typescript
+tags: [css, styling, frontend]
+provides: [styling, component-patterns]
+conflicts: []
+context:
+  - context/utility-classes.md
+  - context/component-patterns.md

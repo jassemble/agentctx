@@ -1,0 +1,10 @@
+name: test-skill-conflict
+description: A skill that conflicts with test-skill-a
+version: "1.0.0"
+tags:
+  - testing
+provides: []
+conflicts:
+  - test-skill-a
+context:
+  - context/override.md

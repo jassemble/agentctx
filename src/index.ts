@@ -8,14 +8,15 @@ program
   .version('0.1.0');
 
 program
-  .command('init')
-  .description('Initialize .agentctx/ in current directory')
+  .command('init [skills...]')
+  .description('Initialize .agentctx/ with optional skills')
   .option('--import', 'Auto-import existing context files (non-interactive)')
   .option('--no-interactive', 'Skip interactive prompts, use defaults')
   .option('--force', 'Overwrite existing .agentctx/ directory')
-  .action(async (options) => {
+  .option('--scan', 'Also run codebase scan after init')
+  .action(async (skills, options) => {
     const { initCommand } = await import('./commands/init.js');
-    await initCommand(options);
+    await initCommand(skills, options);
   });
 
 program
@@ -49,6 +50,16 @@ program
   .action(async () => {
     const { statusCommand } = await import('./commands/status.js');
     await statusCommand();
+  });
+
+program
+  .command('scan')
+  .description('Analyze codebase and suggest/generate context')
+  .option('--suggest-skills', 'Only suggest skills, don\'t generate')
+  .option('--no-ai', 'Skip AI analysis')
+  .action(async (options) => {
+    const { scanCommand } = await import('./commands/scan.js');
+    await scanCommand(options);
   });
 
 program

@@ -9,6 +9,7 @@ interface InitOptions {
   import?: boolean;
   interactive?: boolean;
   force?: boolean;
+  scan?: boolean;
 }
 
 interface DetectedFile {
@@ -113,18 +114,91 @@ function titleToFilename(title: string): string {
     .replace(/^-|-$/g, '') + '.md';
 }
 
-export async function initCommand(options: InitOptions): Promise<void> {
-  const projectRoot = process.cwd();
-  const agentctxDir = join(projectRoot, '.agentctx');
-  const contextDir = join(agentctxDir, 'context');
+// ── Skills-based init flow ─────────────────────────────────────────────
 
-  if (existsSync(agentctxDir) && !options.force) {
-    logger.error('.agentctx/ already exists. Use --force to overwrite.');
+async function initWithSkills(
+  skills: string[],
+  options: InitOptions,
+  projectRoot: string,
+  agentctxDir: string,
+  contextDir: string,
+): Promise<void> {
+  const { resolveSkills, composeSkills } = await import('../core/skills.js');
+
+  const s = p.spinner();
+  s.start(`Resolving skills: ${skills.join(', ')}`);
+
+  let resolved;
+  try {
+    resolved = await resolveSkills(skills);
+  } catch (err) {
+    s.stop('Failed');
+    logger.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
 
-  p.intro('agentctx init');
+  const composed = await composeSkills(resolved);
+  s.stop(`Resolved ${resolved.length} skill(s)`);
 
+  // Auto-detect project name and language
+  const projectName = basename(projectRoot);
+  const language = resolved.find(r => r.yaml.language)?.yaml.language ?? detectProject(projectRoot).language;
+
+  // Create directories and write composed files
+  const createSpinner = p.spinner();
+  createSpinner.start('Creating .agentctx/');
+  await mkdir(contextDir, { recursive: true });
+
+  const contextFiles: string[] = [];
+  for (const file of composed.files) {
+    const filePath = join(contextDir, file.relativePath);
+    await writeFile(filePath, file.content, 'utf-8');
+    contextFiles.push(`context/${file.relativePath}`);
+  }
+
+  // Build config
+  const config: Record<string, unknown> = {
+    version: 1,
+    project: {
+      name: projectName,
+      ...(language ? { language } : {}),
+    },
+    skills: composed.skillNames,
+    context: contextFiles,
+    outputs: {
+      claude: { enabled: true, path: 'CLAUDE.md', max_tokens: 8000 },
+      cursorrules: { enabled: true, path: '.cursorrules', max_tokens: 4000 },
+    },
+  };
+
+  await writeFile(join(agentctxDir, 'config.yaml'), toYaml(config, { lineWidth: 100 }), 'utf-8');
+  createSpinner.stop('Created .agentctx/');
+
+  // Generate outputs
+  await generateOutputs(projectRoot, agentctxDir);
+
+  p.outro('Done! Your context is now managed by agentctx.');
+
+  logger.dim('\nNext steps:');
+  logger.dim('  1. Review .agentctx/context/*.md and customize');
+  logger.dim('  2. Run `agentctx lint` to check quality');
+  logger.dim('  3. Run `agentctx generate --diff` to preview changes');
+
+  if (options.scan) {
+    console.log('');
+    const { scanCommand } = await import('./scan.js');
+    await scanCommand({ ai: true });
+  }
+}
+
+// ── Interactive init flow ──────────────────────────────────────────────
+
+async function initInteractive(
+  options: InitOptions,
+  projectRoot: string,
+  agentctxDir: string,
+  contextDir: string,
+): Promise<void> {
   // Detect existing context files
   const existingFiles = detectExistingFiles(projectRoot);
   const detected = detectProject(projectRoot);
@@ -170,6 +244,25 @@ export async function initCommand(options: InitOptions): Promise<void> {
 
   if (p.isCancel(framework)) { p.cancel('Init cancelled.'); process.exit(0); }
 
+  // NEW: Skill selection
+  let selectedSkills: string[] = [];
+  try {
+    const { listBuiltinSkills } = await import('../core/skills.js');
+    const available = await listBuiltinSkills();
+    if (available.length > 0) {
+      const skillSelection = await p.multiselect({
+        message: 'Apply any context skills? (space to select)',
+        options: available.map(s => ({ value: s.name, label: `${s.name} — ${s.description}` })),
+        required: false,
+      });
+
+      if (p.isCancel(skillSelection)) { p.cancel('Init cancelled.'); process.exit(0); }
+      selectedSkills = skillSelection as string[];
+    }
+  } catch {
+    // Skills module not available yet, skip
+  }
+
   const outputTargets = await p.multiselect({
     message: 'Which output targets?',
     options: [
@@ -210,7 +303,23 @@ export async function initCommand(options: InitOptions): Promise<void> {
     }
   }
 
-  // If no import or no sections found, create starter files
+  // If skills selected, compose them as starter context
+  if (selectedSkills.length > 0 && contextFiles.length === 0) {
+    try {
+      const { resolveSkills, composeSkills } = await import('../core/skills.js');
+      const resolved = await resolveSkills(selectedSkills);
+      const composed = await composeSkills(resolved);
+      for (const file of composed.files) {
+        const filePath = join(contextDir, file.relativePath);
+        await writeFile(filePath, file.content, 'utf-8');
+        contextFiles.push(`context/${file.relativePath}`);
+      }
+    } catch (err) {
+      logger.warn(`Could not apply skills: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  // If no import and no skills, create starter files
   if (contextFiles.length === 0) {
     const starters = [
       { file: 'context/principles.md', content: '# Principles\n\nCore development principles for this project.\n' },
@@ -232,6 +341,7 @@ export async function initCommand(options: InitOptions): Promise<void> {
       ...(language ? { language: language as string } : {}),
       ...(framework ? { framework: framework as string } : {}),
     },
+    ...(selectedSkills.length > 0 ? { skills: selectedSkills } : {}),
     context: contextFiles,
     outputs: {} as Record<string, unknown>,
   };
@@ -256,6 +366,25 @@ export async function initCommand(options: InitOptions): Promise<void> {
   s.stop('Created .agentctx/');
 
   // Generate outputs
+  await generateOutputs(projectRoot, agentctxDir);
+
+  p.outro('Done! Your context is now managed by agentctx.');
+
+  logger.dim('\nNext steps:');
+  logger.dim('  1. Review .agentctx/context/*.md and customize');
+  logger.dim('  2. Run `agentctx lint` to check quality');
+  logger.dim('  3. Run `agentctx generate --diff` to preview changes');
+
+  if (options.scan) {
+    console.log('');
+    const { scanCommand } = await import('./scan.js');
+    await scanCommand({ ai: true });
+  }
+}
+
+// ── Shared output generation ───────────────────────────────────────────
+
+async function generateOutputs(projectRoot: string, agentctxDir: string): Promise<void> {
   const genSpinner = p.spinner();
   genSpinner.start('Generating outputs...');
 
@@ -286,11 +415,25 @@ export async function initCommand(options: InitOptions): Promise<void> {
     logger.warn(`Could not generate outputs: ${err instanceof Error ? err.message : err}`);
     logger.dim('Run `agentctx generate` manually after reviewing your config.');
   }
+}
 
-  p.outro('Done! Your context is now managed by agentctx.');
+// ── Entry point ────────────────────────────────────────────────────────
 
-  logger.dim('\nNext steps:');
-  logger.dim('  1. Review .agentctx/context/*.md and customize');
-  logger.dim('  2. Run `agentctx lint` to check quality');
-  logger.dim('  3. Run `agentctx generate --diff` to preview changes');
+export async function initCommand(skills: string[], options: InitOptions): Promise<void> {
+  const projectRoot = process.cwd();
+  const agentctxDir = join(projectRoot, '.agentctx');
+  const contextDir = join(agentctxDir, 'context');
+
+  if (existsSync(agentctxDir) && !options.force) {
+    logger.error('.agentctx/ already exists. Use --force to overwrite.');
+    process.exit(1);
+  }
+
+  p.intro('agentctx init');
+
+  if (skills.length > 0) {
+    await initWithSkills(skills, options, projectRoot, agentctxDir, contextDir);
+  } else {
+    await initInteractive(options, projectRoot, agentctxDir, contextDir);
+  }
 }

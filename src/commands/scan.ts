@@ -1,0 +1,457 @@
+import { join, basename, resolve } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
+import { parse as parseYaml, stringify as toYaml } from 'yaml';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { logger } from '../utils/logger.js';
+import { spawnWithStdin } from '../utils/exec.js';
+
+const execFileAsync = promisify(execFile);
+
+// ── Types ──────────────────────────────────────────────────────────────
+
+export interface CodebaseProfile {
+  language: string | null;
+  framework: string | null;
+  testRunner: string | null;
+  linter: string | null;
+  orm: string | null;
+  ci: string | null;
+  packageManager: string | null;
+  isMonorepo: boolean;
+  detectedFiles: string[];
+}
+
+interface ScanOptions {
+  ai?: boolean;
+  suggestSkills?: boolean;
+}
+
+interface AiModule {
+  filename: string;
+  title: string;
+  content: string;
+}
+
+// ── Heuristic detection ────────────────────────────────────────────────
+
+function readJsonSafe(path: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(readFileSync(path, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
+function hasDep(pkg: Record<string, unknown>, name: string): boolean {
+  const deps = (pkg.dependencies ?? {}) as Record<string, string>;
+  const devDeps = (pkg.devDependencies ?? {}) as Record<string, string>;
+  return name in deps || name in devDeps;
+}
+
+export function analyzeCodebase(projectRoot: string): CodebaseProfile {
+  const profile: CodebaseProfile = {
+    language: null,
+    framework: null,
+    testRunner: null,
+    linter: null,
+    orm: null,
+    ci: null,
+    packageManager: null,
+    isMonorepo: false,
+    detectedFiles: [],
+  };
+
+  const check = (rel: string): boolean => {
+    const full = join(projectRoot, rel);
+    if (existsSync(full)) {
+      profile.detectedFiles.push(rel);
+      return true;
+    }
+    return false;
+  };
+
+  // ── Language ──
+  const pkgPath = join(projectRoot, 'package.json');
+  const pkg = existsSync(pkgPath) ? readJsonSafe(pkgPath) : null;
+
+  if (pkg) {
+    profile.detectedFiles.push('package.json');
+    profile.language = hasDep(pkg, 'typescript') ? 'typescript' : 'javascript';
+
+    // Framework
+    if (hasDep(pkg, 'next')) profile.framework = 'nextjs';
+    else if (hasDep(pkg, 'react')) profile.framework = 'react';
+    else if (hasDep(pkg, 'vue')) profile.framework = 'vue';
+    else if (hasDep(pkg, 'svelte') || hasDep(pkg, '@sveltejs/kit')) profile.framework = 'svelte';
+    else if (hasDep(pkg, 'express')) profile.framework = 'express';
+    else if (hasDep(pkg, 'hono')) profile.framework = 'hono';
+    else if (hasDep(pkg, '@nestjs/core')) profile.framework = 'nestjs';
+
+    // Test runner
+    if (hasDep(pkg, 'vitest')) profile.testRunner = 'vitest';
+    else if (hasDep(pkg, 'jest')) profile.testRunner = 'jest';
+    else if (hasDep(pkg, 'mocha')) profile.testRunner = 'mocha';
+
+    // Linter
+    const linters: string[] = [];
+    if (hasDep(pkg, 'eslint')) linters.push('ESLint');
+    if (hasDep(pkg, '@biomejs/biome')) linters.push('Biome');
+    if (hasDep(pkg, 'prettier')) linters.push('Prettier');
+    if (linters.length > 0) profile.linter = linters.join(' + ');
+
+    // ORM
+    if (hasDep(pkg, 'prisma') || hasDep(pkg, '@prisma/client')) profile.orm = 'Prisma';
+    else if (hasDep(pkg, 'drizzle-orm')) profile.orm = 'Drizzle';
+    else if (hasDep(pkg, 'typeorm')) profile.orm = 'TypeORM';
+
+    // Monorepo
+    const workspaces = (pkg as Record<string, unknown>).workspaces;
+    if (workspaces) profile.isMonorepo = true;
+  }
+
+  if (!profile.language && check('pyproject.toml')) {
+    profile.language = 'python';
+    // Read pyproject.toml for framework detection
+    try {
+      const content = readFileSync(join(projectRoot, 'pyproject.toml'), 'utf-8');
+      if (content.includes('fastapi')) profile.framework = 'fastapi';
+      else if (content.includes('django')) profile.framework = 'django';
+      else if (content.includes('flask')) profile.framework = 'flask';
+
+      if (content.includes('pytest')) profile.testRunner = 'pytest';
+      if (content.includes('ruff')) profile.linter = 'Ruff';
+      if (content.includes('sqlalchemy')) profile.orm = 'SQLAlchemy';
+      else if (content.includes('sqlmodel')) profile.orm = 'SQLModel';
+    } catch { /* ignore */ }
+  }
+
+  if (!profile.language && check('go.mod')) profile.language = 'go';
+  if (!profile.language && check('Cargo.toml')) profile.language = 'rust';
+
+  // Test runner from config files (if not yet detected)
+  if (!profile.testRunner) {
+    if (check('vitest.config.ts') || check('vitest.config.js')) profile.testRunner = 'vitest';
+    else if (check('jest.config.js') || check('jest.config.ts')) profile.testRunner = 'jest';
+    else if (check('pytest.ini') || check('conftest.py')) profile.testRunner = 'pytest';
+  }
+
+  // Linter from config files (if not yet detected)
+  if (!profile.linter) {
+    if (check('.eslintrc.js') || check('.eslintrc.json') || check('eslint.config.js') || check('eslint.config.mjs')) {
+      profile.linter = 'ESLint';
+    } else if (check('biome.json') || check('biome.jsonc')) {
+      profile.linter = 'Biome';
+    }
+  }
+
+  // CI
+  if (existsSync(join(projectRoot, '.github', 'workflows'))) {
+    profile.ci = 'GitHub Actions';
+    profile.detectedFiles.push('.github/workflows/');
+  } else if (check('.gitlab-ci.yml')) {
+    profile.ci = 'GitLab CI';
+  } else if (existsSync(join(projectRoot, '.circleci'))) {
+    profile.ci = 'CircleCI';
+    profile.detectedFiles.push('.circleci/');
+  }
+
+  // Package manager
+  if (check('pnpm-lock.yaml')) profile.packageManager = 'pnpm';
+  else if (check('yarn.lock')) profile.packageManager = 'yarn';
+  else if (check('bun.lockb')) profile.packageManager = 'bun';
+  else if (check('package-lock.json')) profile.packageManager = 'npm';
+
+  // Monorepo (additional checks)
+  if (!profile.isMonorepo) {
+    if (check('pnpm-workspace.yaml') || check('turbo.json') || check('nx.json')) {
+      profile.isMonorepo = true;
+    }
+  }
+
+  return profile;
+}
+
+// ── Skill suggestion mapping ───────────────────────────────────────────
+
+function suggestSkillNames(profile: CodebaseProfile): string[] {
+  const skills: string[] = [];
+
+  if (profile.framework === 'nextjs') skills.push('nextjs');
+  if (profile.language === 'typescript') skills.push('typescript');
+  if (profile.framework === 'fastapi') skills.push('python-fastapi');
+
+  // Check for tailwind
+  const pkgPath = join(process.cwd(), 'package.json');
+  if (existsSync(pkgPath)) {
+    const pkg = readJsonSafe(pkgPath);
+    if (pkg && hasDep(pkg, 'tailwindcss')) skills.push('tailwind');
+  }
+
+  return skills;
+}
+
+function printProfile(profile: CodebaseProfile): void {
+  const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
+  const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+
+  const lines: [string, string | null][] = [
+    ['Language', profile.language],
+    ['Framework', profile.framework],
+    ['Test Runner', profile.testRunner],
+    ['Linter', profile.linter],
+    ['ORM', profile.orm],
+    ['CI', profile.ci],
+    ['Pkg Manager', profile.packageManager],
+  ];
+
+  console.log('');
+  console.log('  Detected:');
+  for (const [label, value] of lines) {
+    if (value) {
+      console.log(`    ${dim(label + ':')}  ${cyan(value)}`);
+    }
+  }
+  if (profile.isMonorepo) {
+    console.log(`    ${dim('Monorepo:')}  ${cyan('yes')}`);
+  }
+  console.log('');
+}
+
+// ── AI analysis ────────────────────────────────────────────────────────
+
+function getDirectoryTree(root: string, depth: number = 0, maxDepth: number = 2): string {
+  if (depth > maxDepth) return '';
+  const IGNORE = new Set(['node_modules', '.git', '.next', '__pycache__', 'dist', '.agentctx', '.turbo', '.cache', 'coverage']);
+
+  let tree = '';
+  try {
+    const entries = readdirSync(root, { withFileTypes: true });
+    const indent = '  '.repeat(depth);
+    for (const entry of entries) {
+      if (IGNORE.has(entry.name)) continue;
+      if (entry.isDirectory()) {
+        tree += `${indent}${entry.name}/\n`;
+        tree += getDirectoryTree(join(root, entry.name), depth + 1, maxDepth);
+      } else if (depth <= 1) {
+        tree += `${indent}${entry.name}\n`;
+      }
+    }
+  } catch { /* ignore */ }
+  return tree;
+}
+
+function pickRepresentativeFiles(projectRoot: string): string[] {
+  const candidates = ['src', 'app', 'lib', 'pages'];
+  const files: string[] = [];
+
+  for (const dir of candidates) {
+    const fullDir = join(projectRoot, dir);
+    if (!existsSync(fullDir)) continue;
+    try {
+      const entries = readdirSync(fullDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        if (!/\.(ts|tsx|js|jsx|py|go|rs)$/.test(entry.name)) continue;
+        // Skip test files, index files, config files
+        if (/\.(test|spec|config)\./i.test(entry.name)) continue;
+        files.push(join(dir, entry.name));
+        if (files.length >= 3) return files;
+      }
+    } catch { /* ignore */ }
+  }
+
+  return files;
+}
+
+const AI_SYSTEM_PROMPT = `You are a codebase analyzer. Given a project's directory structure, config files, and sample source code, generate context modules that describe the project for AI coding assistants.
+
+Produce ONLY valid JSON — an array of objects with this schema:
+[
+  {
+    "filename": "architecture.md",
+    "title": "Architecture",
+    "content": "# Architecture\\n\\nDescription of the project architecture..."
+  }
+]
+
+Generate 2-4 modules from this list (only include ones you have enough info to write meaningfully):
+- architecture.md — Project structure, key directories, how code is organized
+- testing.md — Testing framework, patterns, how to run tests
+- style.md — Code style conventions observed in the source files
+- patterns.md — Key patterns and conventions used (state management, error handling, etc.)
+
+Rules:
+- Be specific to THIS project, not generic advice
+- Use markdown with clear headings
+- Keep each module focused and concise (200-500 words)
+- Reference actual file paths and patterns you see in the code
+- content field should use \\n for newlines (valid JSON string)`;
+
+async function runAiAnalysis(projectRoot: string): Promise<AiModule[] | null> {
+  // Check claude CLI is available
+  try {
+    await execFileAsync('claude', ['--version'], { timeout: 5000 });
+  } catch {
+    logger.warn('claude CLI not found — install Claude Code to enable AI analysis');
+    return null;
+  }
+
+  logger.info('Gathering codebase context for AI analysis...');
+
+  // Build context payload
+  const sections: string[] = [];
+
+  // 1. Directory tree
+  const tree = getDirectoryTree(projectRoot);
+  sections.push(`## Directory Structure\n\`\`\`\n${tree}\`\`\``);
+
+  // 2. Package manifest
+  for (const manifest of ['package.json', 'pyproject.toml', 'go.mod', 'Cargo.toml']) {
+    const p = join(projectRoot, manifest);
+    if (existsSync(p)) {
+      try {
+        const content = readFileSync(p, 'utf-8');
+        sections.push(`## ${manifest}\n\`\`\`\n${content}\`\`\``);
+      } catch { /* ignore */ }
+      break;
+    }
+  }
+
+  // 3. Config files
+  for (const cfg of ['tsconfig.json', 'next.config.js', 'next.config.mjs', 'next.config.ts', 'vite.config.ts', 'tailwind.config.ts', 'tailwind.config.js']) {
+    const p = join(projectRoot, cfg);
+    if (existsSync(p)) {
+      try {
+        const content = readFileSync(p, 'utf-8');
+        sections.push(`## ${cfg}\n\`\`\`\n${content}\`\`\``);
+      } catch { /* ignore */ }
+    }
+  }
+
+  // 4. Representative source files
+  const repFiles = pickRepresentativeFiles(projectRoot);
+  for (const relPath of repFiles) {
+    try {
+      const content = readFileSync(join(projectRoot, relPath), 'utf-8');
+      // Cap each file at ~200 lines
+      const trimmed = content.split('\n').slice(0, 200).join('\n');
+      sections.push(`## ${relPath}\n\`\`\`\n${trimmed}\`\`\``);
+    } catch { /* ignore */ }
+  }
+
+  const payload = sections.join('\n\n');
+
+  try {
+    logger.info('Running AI analysis (this may take a moment)...');
+    const stdout = await spawnWithStdin('claude', [
+      '--print',
+      '--model', 'sonnet',
+      '--system-prompt', AI_SYSTEM_PROMPT,
+    ], payload, 120000);
+
+    // Parse JSON from response
+    const jsonMatch = stdout.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      logger.warn('AI analysis returned unparseable response');
+      return null;
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]) as AiModule[];
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      logger.warn('AI analysis returned empty results');
+      return null;
+    }
+
+    // Validate shape
+    for (const mod of parsed) {
+      if (typeof mod.filename !== 'string' || typeof mod.content !== 'string') {
+        logger.warn('AI analysis returned malformed module');
+        return null;
+      }
+    }
+
+    return parsed;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(`AI analysis failed: ${msg}`);
+    return null;
+  }
+}
+
+// ── Main command ───────────────────────────────────────────────────────
+
+export async function scanCommand(options: ScanOptions): Promise<void> {
+  const projectRoot = process.cwd();
+
+  // Phase 1: Heuristic detection (always runs)
+  const profile = analyzeCodebase(projectRoot);
+  printProfile(profile);
+
+  const suggestedSkills = suggestSkillNames(profile);
+
+  if (suggestedSkills.length > 0) {
+    const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+    const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
+    console.log(`  Suggested skills: ${bold(`agentctx init ${suggestedSkills.join(' ')}`)}`);
+    console.log('');
+  }
+
+  // If --suggest-skills, stop here
+  if (options.suggestSkills) {
+    return;
+  }
+
+  // Phase 2: AI analysis (runs by default, skip with --no-ai)
+  if (options.ai === false) {
+    logger.dim('AI analysis skipped (--no-ai)');
+    return;
+  }
+
+  const agentctxDir = join(projectRoot, '.agentctx');
+  if (!existsSync(agentctxDir)) {
+    logger.warn('No .agentctx/ found. Run `agentctx init` first, or use `--suggest-skills` to see recommendations.');
+    return;
+  }
+
+  const modules = await runAiAnalysis(projectRoot);
+  if (!modules) return;
+
+  // Write modules to .agentctx/context/
+  const contextDir = join(agentctxDir, 'context');
+  const writtenFiles: string[] = [];
+
+  for (const mod of modules) {
+    const filePath = join(contextDir, mod.filename);
+    await writeFile(filePath, mod.content, 'utf-8');
+    writtenFiles.push(`context/${mod.filename}`);
+    logger.success(`Wrote ${mod.filename}`);
+  }
+
+  // Update config.yaml to include new modules
+  const configPath = join(agentctxDir, 'config.yaml');
+  if (existsSync(configPath)) {
+    try {
+      const configContent = await readFile(configPath, 'utf-8');
+      const config = parseYaml(configContent) as Record<string, unknown>;
+      const existingContext = (config.context ?? []) as string[];
+
+      // Add new files that aren't already listed
+      for (const f of writtenFiles) {
+        if (!existingContext.includes(f)) {
+          existingContext.push(f);
+        }
+      }
+      config.context = existingContext;
+
+      await writeFile(configPath, toYaml(config, { lineWidth: 100 }), 'utf-8');
+      logger.success('Updated config.yaml');
+    } catch (err) {
+      logger.warn(`Could not update config.yaml: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
+  console.log('');
+  logger.dim('Review generated files in .agentctx/context/ and run `agentctx generate` to update outputs.');
+}

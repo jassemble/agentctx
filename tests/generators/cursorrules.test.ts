@@ -30,6 +30,7 @@ function makeConfig(overrides?: Partial<AgentCtxConfig>): AgentCtxConfig {
   return {
     version: 1 as const,
     project: { name: 'test-project' },
+    skills: [],
     context: ['context/principles.md', 'context/testing.md'],
     outputs: {
       claude: {

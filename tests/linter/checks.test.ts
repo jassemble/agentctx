@@ -15,6 +15,7 @@ function makeConfig(overrides?: Partial<AgentCtxConfig>): AgentCtxConfig {
   return {
     version: 1 as const,
     project: { name: 'simple-project', language: 'typescript', framework: 'nextjs' },
+    skills: [],
     context: ['context/principles.md', 'context/testing.md'],
     outputs: {
       claude: {
