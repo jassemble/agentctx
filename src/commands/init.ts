@@ -1,9 +1,11 @@
 import { resolve, join, basename, extname, dirname, relative } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { stringify as toYaml } from 'yaml';
 import * as p from '@clack/prompts';
 import { logger } from '../utils/logger.js';
+import { analyzeCodebase, describeStack, suggestSkillNames } from '../core/detector.js';
+import type { CodebaseProfile } from '../core/detector.js';
 
 interface InitOptions {
   import?: boolean;
@@ -173,6 +175,124 @@ async function createLivingContext(contextDir: string): Promise<string[]> {
   return paths;
 }
 
+// ── AI module generation ───────────────────────────────────────────────
+
+async function generateAiModules(
+  projectRoot: string,
+  contextDir: string,
+  contextFiles: string[],
+): Promise<void> {
+  const modulesDir = join(contextDir, 'modules');
+
+  try {
+    const { spawnWithStdin } = await import('../utils/exec.js');
+    const { execFile: execFileCb } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const execFileAsync = promisify(execFileCb);
+
+    // Check claude CLI
+    try {
+      await execFileAsync('claude', ['--version'], { timeout: 5000 });
+    } catch {
+      logger.dim('  claude CLI not found — skipping AI module generation');
+      return;
+    }
+
+    const s = p.spinner();
+    s.start('Scanning codebase to generate module files...');
+
+    // Build context: directory tree + key files
+    const IGNORE = new Set(['node_modules', '.git', '.next', '__pycache__', 'dist', '.agentctx', '.turbo', '.cache', 'coverage']);
+
+    function getTree(root: string, depth = 0, maxDepth = 2): string {
+      if (depth > maxDepth) return '';
+      let tree = '';
+      try {
+        for (const entry of readdirSync(root, { withFileTypes: true })) {
+          if (IGNORE.has(entry.name)) continue;
+          const indent = '  '.repeat(depth);
+          if (entry.isDirectory()) {
+            tree += `${indent}${entry.name}/\n`;
+            tree += getTree(join(root, entry.name), depth + 1, maxDepth);
+          } else if (depth <= 1) {
+            tree += `${indent}${entry.name}\n`;
+          }
+        }
+      } catch { /* ignore */ }
+      return tree;
+    }
+
+    const sections: string[] = [];
+    sections.push(`## Directory Structure\n\`\`\`\n${getTree(projectRoot)}\`\`\``);
+
+    // Package manifest
+    for (const manifest of ['package.json', 'pyproject.toml', 'go.mod', 'Cargo.toml']) {
+      const mp = join(projectRoot, manifest);
+      if (existsSync(mp)) {
+        try { sections.push(`## ${manifest}\n\`\`\`\n${readFileSync(mp, 'utf-8')}\`\`\``); } catch { /* ignore */ }
+        break;
+      }
+    }
+
+    // Pick source files
+    for (const dir of ['src', 'app', 'lib', 'pages']) {
+      const d = join(projectRoot, dir);
+      if (!existsSync(d)) continue;
+      try {
+        let count = 0;
+        for (const entry of readdirSync(d, { withFileTypes: true })) {
+          if (!entry.isFile() || !/\.(ts|tsx|js|jsx|py|go|rs)$/.test(entry.name)) continue;
+          if (/\.(test|spec|config)\./i.test(entry.name)) continue;
+          const content = readFileSync(join(d, entry.name), 'utf-8').split('\n').slice(0, 150).join('\n');
+          sections.push(`## ${dir}/${entry.name}\n\`\`\`\n${content}\`\`\``);
+          if (++count >= 3) break;
+        }
+      } catch { /* ignore */ }
+    }
+
+    const MODULES_PROMPT = `You are a codebase analyzer. Given a project's structure and source code, generate module documentation files that describe WHAT EXISTS in the codebase for AI coding assistants.
+
+Produce ONLY valid JSON — an array of objects:
+[
+  {
+    "filename": "auth.md",
+    "title": "Auth Module",
+    "content": "# Auth Module\\n\\n## Key Files\\n- \`src/auth/login.ts\` — handles login flow\\n\\n## Exports\\n- \`useAuth()\` — hook returning { user, login, logout }\\n\\n## Dependencies\\n- Uses: database, email\\n- Used by: dashboard\\n\\n## Notes\\n- JWT-based, tokens in httpOnly cookies"
+  }
+]
+
+Rules:
+- Generate 2-6 module files based on the actual feature areas you see
+- Each module should document: Key Files, Exports (functions/components), Dependencies, Notes
+- Reference REAL file paths and function names from the code
+- Group by feature area (auth, dashboard, api, database, etc.), not by file type
+- Only document what actually exists — don't invent
+- content field uses \\n for newlines (valid JSON string)`;
+
+    const payload = sections.join('\n\n');
+    const stdout = await spawnWithStdin('claude', [
+      '--print', '--model', 'haiku', '--system-prompt', MODULES_PROMPT,
+    ], payload, 60000);
+
+    const jsonMatch = stdout.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const modules = JSON.parse(jsonMatch[0]) as { filename: string; title: string; content: string }[];
+      await mkdir(modulesDir, { recursive: true });
+      for (const mod of modules) {
+        const fname = mod.filename.endsWith('.md') ? mod.filename : `${mod.filename}.md`;
+        await writeFile(join(modulesDir, fname), mod.content, 'utf-8');
+        const rp = `context/modules/${fname}`;
+        if (!contextFiles.includes(rp)) contextFiles.push(rp);
+      }
+      s.stop(`Generated ${modules.length} module file(s) from codebase`);
+    } else {
+      s.stop('Could not parse AI response — skipping module generation');
+    }
+  } catch (err) {
+    logger.dim(`  Module generation skipped: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
 // ── Skills-based init flow ─────────────────────────────────────────────
 
 async function initWithSkills(
@@ -181,6 +301,7 @@ async function initWithSkills(
   projectRoot: string,
   agentctxDir: string,
   contextDir: string,
+  isExistingProject: boolean,
 ): Promise<void> {
   // Always include workflow skill
   if (!skills.includes('workflow')) {
@@ -213,6 +334,26 @@ async function initWithSkills(
   createSpinner.start('Creating .agentctx/');
   await mkdir(contextDir, { recursive: true });
 
+  // If existing project, import existing context files first
+  const importedFiles: string[] = [];
+  if (isExistingProject) {
+    const existingFiles = detectExistingFiles(projectRoot);
+    if (existingFiles.length > 0) {
+      logger.info(`Importing ${existingFiles.length} existing context file(s)`);
+      for (const file of existingFiles) {
+        const content = await readFile(file.path, 'utf-8');
+        const sections = splitByHeadings(content);
+        for (const section of sections) {
+          const filename = titleToFilename(section.title);
+          const filePath = join(contextDir, filename);
+          await writeFile(filePath, `# ${section.title}\n\n${section.body}\n`, 'utf-8');
+          const rp = `context/${filename}`;
+          if (!importedFiles.includes(rp)) importedFiles.push(rp);
+        }
+      }
+    }
+  }
+
   const contextFiles: string[] = [];
   for (const file of composed.files) {
     const filePath = join(contextDir, file.relativePath);
@@ -222,6 +363,11 @@ async function initWithSkills(
 
   const livingPaths = await createLivingContext(contextDir);
   contextFiles.push(...livingPaths);
+
+  // Merge imported files (avoid duplicates with skill files)
+  for (const imp of importedFiles) {
+    if (!contextFiles.includes(imp)) contextFiles.push(imp);
+  }
 
   // Write .claude/commands/ from skills
   if (composed.commands.length > 0) {
@@ -240,6 +386,11 @@ async function initWithSkills(
       await mkdir(dirname(destPath), { recursive: true });
       await writeFile(destPath, scaffold.content, 'utf-8');
     }
+  }
+
+  // AI scan for module files in existing projects
+  if (isExistingProject) {
+    await generateAiModules(projectRoot, contextDir, contextFiles);
   }
 
   // Build config
@@ -296,10 +447,24 @@ async function initInteractive(
   projectRoot: string,
   agentctxDir: string,
   contextDir: string,
+  isExistingProject: boolean,
 ): Promise<void> {
   // Detect existing context files
   const existingFiles = detectExistingFiles(projectRoot);
   const detected = detectProject(projectRoot);
+
+  // If existing project, run codebase analysis
+  let profile: CodebaseProfile | null = null;
+  let suggestedSkillsList: string[] = [];
+
+  if (isExistingProject) {
+    profile = analyzeCodebase(projectRoot);
+    const stack = describeStack(profile);
+    if (stack !== 'Unknown') {
+      p.note(`Detected: ${stack}`, 'Existing project');
+    }
+    suggestedSkillsList = suggestSkillNames(profile, projectRoot);
+  }
 
   if (existingFiles.length > 0) {
     p.note(
@@ -328,7 +493,7 @@ async function initInteractive(
 
   const language = await p.text({
     message: 'Primary language?',
-    initialValue: detected.language || '',
+    initialValue: profile?.language || detected.language || '',
     placeholder: 'typescript, python, go, rust...',
   });
 
@@ -336,7 +501,7 @@ async function initInteractive(
 
   const framework = await p.text({
     message: 'Primary framework? (optional)',
-    initialValue: detected.framework || '',
+    initialValue: profile?.framework || detected.framework || '',
     placeholder: 'nextjs, react, fastapi...',
   });
 
@@ -351,6 +516,7 @@ async function initInteractive(
       const skillSelection = await p.multiselect({
         message: 'Apply any context skills? (space to select)',
         options: available.map(s => ({ value: s.name, label: `${s.name} — ${s.description}` })),
+        initialValues: suggestedSkillsList.length > 0 ? suggestedSkillsList : [],
         required: false,
       });
 
@@ -458,6 +624,19 @@ async function initInteractive(
     if (!contextFiles.includes(lp)) contextFiles.push(lp);
   }
 
+  s.stop('Created .agentctx/');
+
+  // AI scan prompt for existing projects
+  if (isExistingProject) {
+    const shouldScan = await p.confirm({
+      message: 'Scan codebase to auto-generate module documentation?',
+      initialValue: true,
+    });
+    if (!p.isCancel(shouldScan) && shouldScan) {
+      await generateAiModules(projectRoot, contextDir, contextFiles);
+    }
+  }
+
   // Build config
   const config: Record<string, unknown> = {
     version: 1,
@@ -499,8 +678,6 @@ async function initInteractive(
   // Write config.yaml
   const configYaml = toYaml(config, { lineWidth: 100 });
   await writeFile(join(agentctxDir, 'config.yaml'), configYaml, 'utf-8');
-
-  s.stop('Created .agentctx/');
 
   // Generate outputs
   await generateOutputs(projectRoot, agentctxDir);
@@ -578,9 +755,17 @@ export async function initCommand(skills: string[], options: InitOptions): Promi
 
   p.intro('agentctx init');
 
+  // Auto-detect existing project
+  const isExistingProject = existsSync(join(projectRoot, 'package.json')) ||
+    existsSync(join(projectRoot, 'pyproject.toml')) ||
+    existsSync(join(projectRoot, 'go.mod')) ||
+    existsSync(join(projectRoot, 'Cargo.toml')) ||
+    existsSync(join(projectRoot, 'src')) ||
+    existsSync(join(projectRoot, 'app'));
+
   if (skills.length > 0) {
-    await initWithSkills(skills, options, projectRoot, agentctxDir, contextDir);
+    await initWithSkills(skills, options, projectRoot, agentctxDir, contextDir, isExistingProject);
   } else {
-    await initInteractive(options, projectRoot, agentctxDir, contextDir);
+    await initInteractive(options, projectRoot, agentctxDir, contextDir, isExistingProject);
   }
 }
