@@ -28,15 +28,67 @@ async function findMarkdownFiles(dir: string, base: string = dir): Promise<strin
   return files.sort();
 }
 
-function categorizeFiles(files: string[]): Map<string, string[]> {
-  const categories = new Map<string, string[]>();
+interface TreeNode {
+  name: string;
+  path?: string; // only for files
+  children: TreeNode[];
+}
+
+function buildTree(files: string[]): TreeNode {
+  const root: TreeNode = { name: '', children: [] };
+
   for (const file of files) {
     const parts = file.split('/');
-    const category = parts.length > 1 ? parts.slice(0, -1).join('/') : 'Root';
-    if (!categories.has(category)) categories.set(category, []);
-    categories.get(category)!.push(file);
+    let current = root;
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const isFile = i === parts.length - 1;
+
+      if (isFile) {
+        current.children.push({ name: part, path: file, children: [] });
+      } else {
+        let folder = current.children.find(c => c.name === part && !c.path);
+        if (!folder) {
+          folder = { name: part, children: [] };
+          current.children.push(folder);
+        }
+        current = folder;
+      }
+    }
   }
-  return categories;
+
+  return root;
+}
+
+function renderTree(node: TreeNode, depth: number = 0): string {
+  let html = '';
+
+  // Sort: folders first, then files
+  const folders = node.children.filter(c => !c.path);
+  const files = node.children.filter(c => c.path);
+
+  for (const folder of folders) {
+    const indent = depth * 12;
+    html += `<div class="tree-folder" style="padding-left:${indent}px">
+      <div class="tree-folder-head" onclick="this.parentElement.classList.toggle('collapsed')">
+        <svg class="chevron" width="12" height="12" viewBox="0 0 12 12"><path d="M4.5 2L8.5 6L4.5 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="tree-folder-name">${escapeHTML(folder.name)}</span>
+      </div>
+      <div class="tree-folder-children">${renderTree(folder, depth + 1)}</div>
+    </div>`;
+  }
+
+  for (const file of files) {
+    const indent = depth * 12;
+    const name = file.name.replace(/\.md$/i, '');
+    html += `<a class="tree-file" href="#" data-path="${escapeHTML(file.path!)}" style="padding-left:${indent + 20}px">
+      <svg class="doc-icon" width="14" height="14" viewBox="0 0 16 16"><path d="M3 1.5A1.5 1.5 0 014.5 0h5.379a1.5 1.5 0 011.06.44l2.122 2.12A1.5 1.5 0 0113.5 3.622V14.5a1.5 1.5 0 01-1.5 1.5h-8A1.5 1.5 0 013 14.5v-13z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 7h5M5.5 9.5h5M5.5 12h3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+      <span>${escapeHTML(name)}</span>
+    </a>`;
+  }
+
+  return html;
 }
 
 function escapeHTML(str: string): string {
@@ -70,18 +122,8 @@ function setupFileWatcher(projectRoot: string): void {
 }
 
 function getHTML(files: string[], projectName: string): string {
-  const categories = categorizeFiles(files);
-
-  let sidebarHTML = '';
-  for (const [category, categoryFiles] of categories) {
-    sidebarHTML += `<div class="category">
-      <div class="category-title">${escapeHTML(category)}</div>
-      ${categoryFiles.map(f => {
-        const name = f.split('/').pop()!;
-        return `<a class="file-link" href="#" data-path="${escapeHTML(f)}" title="${escapeHTML(f)}">${escapeHTML(name)}</a>`;
-      }).join('\n')}
-    </div>`;
-  }
+  const tree = buildTree(files);
+  const sidebarHTML = renderTree(tree);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -94,25 +136,36 @@ function getHTML(files: string[], projectName: string): string {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
       --bg: #0d1117; --surface: #161b22; --surface-2: #1c2333;
-      --border: #30363d; --text: #e6edf3; --text-dim: #7d8590;
-      --accent: #58a6ff; --accent-dim: #1f6feb33; --green: #3fb950;
+      --border: #30363d; --text: #c9d1d9; --text-dim: #7d8590;
+      --accent: #58a6ff; --accent-dim: #1f6feb22; --green: #3fb950;
     }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
 
     /* Sidebar */
-    .sidebar { width: 260px; min-width: 260px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
-    .sidebar-header { padding: 20px 16px 12px; border-bottom: 1px solid var(--border); }
-    .sidebar-header h1 { font-size: 15px; font-weight: 600; }
-    .sidebar-header .sub { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
-    .sidebar-search { padding: 10px 16px; border-bottom: 1px solid var(--border); }
-    .sidebar-search input { width: 100%; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; outline: none; }
+    .sidebar { width: 250px; min-width: 250px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+    .sidebar-header { padding: 16px 16px 14px; border-bottom: 1px solid var(--border); }
+    .sidebar-header h1 { font-size: 13px; font-weight: 600; letter-spacing: 0.3px; display: flex; align-items: center; gap: 6px; }
+    .sidebar-header .sub { font-size: 11px; color: var(--text-dim); margin-top: 4px; font-weight: 400; }
+    .sidebar-search { padding: 8px 12px; }
+    .sidebar-search input { width: 100%; padding: 5px 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 5px; color: var(--text); font-size: 12px; outline: none; transition: border-color 0.2s; }
     .sidebar-search input:focus { border-color: var(--accent); }
-    .sidebar-files { flex: 1; overflow-y: auto; padding: 8px 0; }
-    .category { margin-bottom: 2px; }
-    .category-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding: 8px 16px 4px; }
-    .file-link { display: block; padding: 4px 16px 4px 24px; color: var(--text); text-decoration: none; font-size: 13px; border-left: 2px solid transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .file-link:hover { background: var(--surface-2); color: var(--accent); }
-    .file-link.active { background: var(--accent-dim); color: var(--accent); border-left-color: var(--accent); }
+    .sidebar-search input::placeholder { color: var(--text-dim); }
+    .sidebar-files { flex: 1; overflow-y: auto; padding: 4px 8px 16px; }
+
+    /* Tree */
+    .tree-folder { }
+    .tree-folder-head { display: flex; align-items: center; gap: 4px; padding: 3px 6px; cursor: pointer; border-radius: 5px; user-select: none; font-size: 13px; color: var(--text-dim); font-weight: 500; }
+    .tree-folder-head:hover { background: var(--surface-2); color: var(--text); }
+    .chevron { transition: transform 0.15s ease; flex-shrink: 0; color: var(--text-dim); }
+    .tree-folder:not(.collapsed) > .tree-folder-head .chevron { transform: rotate(90deg); }
+    .tree-folder.collapsed > .tree-folder-children { display: none; }
+    .tree-folder-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .tree-file { display: flex; align-items: center; gap: 6px; padding: 3px 6px; color: var(--text); text-decoration: none; font-size: 13px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: all 0.1s; }
+    .tree-file:hover { background: var(--surface-2); }
+    .tree-file.active { background: var(--accent-dim); color: var(--accent); }
+    .tree-file.active .doc-icon { color: var(--accent); }
+    .doc-icon { flex-shrink: 0; color: var(--text-dim); }
 
     /* Content */
     .content-wrapper { flex: 1; display: flex; overflow: hidden; }
@@ -168,11 +221,15 @@ function getHTML(files: string[], projectName: string): string {
 <body>
   <aside class="sidebar">
     <div class="sidebar-header">
-      <h1>${escapeHTML(projectName)} <span class="live" title="Live reload"></span></h1>
-      <div class="sub">${files.length} files</div>
+      <h1>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="3" stroke="var(--accent)" stroke-width="1.5"/><path d="M5 5.5h6M5 8h4M5 10.5h5" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round"/></svg>
+        ${escapeHTML(projectName)}
+        <span class="live" title="Live reload"></span>
+      </h1>
+      <div class="sub">${files.length} docs</div>
     </div>
     <div class="sidebar-search">
-      <input type="text" id="search" placeholder="Filter..." autocomplete="off">
+      <input type="text" id="search" placeholder="Find docs..." autocomplete="off">
     </div>
     <nav class="sidebar-files" id="file-list">${sidebarHTML}</nav>
   </aside>
@@ -198,7 +255,7 @@ function getHTML(files: string[], projectName: string): string {
 
     const contentEl = document.getElementById('content');
     const tocEl = document.getElementById('toc-links');
-    const links = document.querySelectorAll('.file-link');
+    const links = document.querySelectorAll('.tree-file');
     let currentFile = null;
 
     async function loadFile(path) {
@@ -240,8 +297,11 @@ function getHTML(files: string[], projectName: string): string {
     document.getElementById('search').addEventListener('input', function() {
       const q = this.value.toLowerCase();
       links.forEach(link => { link.style.display = link.dataset.path.toLowerCase().includes(q) ? '' : 'none'; });
-      document.querySelectorAll('.category').forEach(cat => {
-        cat.style.display = Array.from(cat.querySelectorAll('.file-link')).some(l => l.style.display !== 'none') ? '' : 'none';
+      // Show/hide folders based on whether they have visible children
+      document.querySelectorAll('.tree-folder').forEach(folder => {
+        const hasVisible = Array.from(folder.querySelectorAll('.tree-file')).some(l => l.style.display !== 'none');
+        folder.style.display = hasVisible ? '' : 'none';
+        if (q && hasVisible) folder.classList.remove('collapsed');
       });
     });
 
