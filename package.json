@@ -1,0 +1,50 @@
+{
+  "name": "agentctx",
+  "version": "0.1.0",
+  "description": "Unified agent context management CLI — one source of truth, many AI agent outputs",
+  "type": "module",
+  "bin": {
+    "agentctx": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "context",
+    "claude",
+    "cursor",
+    "copilot",
+    "cli",
+    "developer-tools"
+  ],
+  "author": "Jaspreet Singh",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^13.1.0",
+    "yaml": "^2.7.0",
+    "zod": "^3.24.0",
+    "@clack/prompts": "^0.10.0",
+    "diff": "^7.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsup": "^8.4.0",
+    "vitest": "^3.0.0",
+    "@types/node": "^22.0.0",
+    "@types/diff": "^7.0.0"
+  }
+}
