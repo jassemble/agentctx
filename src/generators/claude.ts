@@ -50,5 +50,52 @@ export function generateClaude(
     }
   }
 
+  // Add Context Maintenance Protocol
+  parts.push('');
+  parts.push('---');
+  parts.push('');
+  parts.push('## Context Maintenance Protocol');
+  parts.push('');
+  parts.push('This project uses agentctx for living documentation. After implementing features or making significant changes, maintain the context files:');
+  parts.push('');
+  parts.push('### After implementing a feature');
+  parts.push('1. Create or update a module file in `.agentctx/context/modules/<feature-name>.md`');
+  parts.push('2. Document: key files created/modified, exported functions/components, dependencies on other modules');
+  parts.push('3. Follow this format:');
+  parts.push('');
+  parts.push('```markdown');
+  parts.push('# <Module Name>');
+  parts.push('');
+  parts.push('## Key Files');
+  parts.push('- `src/path/to/file.ts` — brief description of purpose');
+  parts.push('');
+  parts.push('## Exports');
+  parts.push('- `functionName()` — what it does');
+  parts.push('- `ComponentName` — what it renders');
+  parts.push('');
+  parts.push('## Dependencies');
+  parts.push('- Uses: list modules this depends on');
+  parts.push('- Used by: list modules that depend on this');
+  parts.push('');
+  parts.push('## Notes');
+  parts.push('- Implementation details, gotchas, planned changes');
+  parts.push('```');
+  parts.push('');
+  parts.push('### After making an architectural decision');
+  parts.push('Append to `.agentctx/context/decisions.md`:');
+  parts.push('- What was decided and why');
+  parts.push('- Alternatives that were considered');
+  parts.push('- Date of the decision');
+  parts.push('');
+  parts.push('### After completing work');
+  parts.push('Update `.agentctx/context/status.md`:');
+  parts.push('- Move completed items from "In Progress" to "Recently Completed"');
+  parts.push('- Add any new known issues discovered');
+  parts.push('');
+  parts.push('### Before creating new code');
+  parts.push('1. Check `.agentctx/context/modules/` for existing module files — reuse exported functions instead of creating duplicates');
+  parts.push('2. Check `.agentctx/context/architecture.md` for directory conventions — put new files in the right place');
+  parts.push('3. Check `.agentctx/context/decisions.md` for prior decisions that may affect your approach');
+
   return parts.join('\n') + '\n';
 }

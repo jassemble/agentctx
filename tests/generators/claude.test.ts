@@ -96,9 +96,9 @@ describe('generateClaude', () => {
   it('separates modules with ---', () => {
     const result = generateClaude(makeModules(), makeConfig());
     expect(result).toContain('---');
-    // Should have separators between modules (2 separators for 3 modules)
+    // Should have separators between modules (2 for 3 modules) + 1 before Context Maintenance Protocol
     const separators = result.match(/^---$/gm);
-    expect(separators).toHaveLength(2);
+    expect(separators).toHaveLength(3);
   });
 
   it('filters out excluded sections', () => {
@@ -144,7 +144,7 @@ describe('generateClaude', () => {
     expect(result).not.toContain('## Workflows');
   });
 
-  it('returns empty body when all modules are excluded', () => {
+  it('returns empty body when all modules are excluded (except protocol)', () => {
     const config = makeConfig({
       outputs: {
         claude: {
@@ -164,6 +164,10 @@ describe('generateClaude', () => {
     });
     const result = generateClaude([], config);
     expect(result).toContain('# test-project');
-    expect(result).not.toContain('##');
+    // Should only have the Context Maintenance Protocol section, no module sections
+    expect(result).not.toContain('## Principles');
+    expect(result).not.toContain('## Testing');
+    expect(result).not.toContain('## Workflows');
+    expect(result).toContain('## Context Maintenance Protocol');
   });
 });

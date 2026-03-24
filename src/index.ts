@@ -63,6 +63,15 @@ program
   });
 
 program
+  .command('refresh')
+  .description('Update context from recent code changes')
+  .option('--no-ai', 'Only show what changed, don\'t auto-update')
+  .action(async (options) => {
+    const { refreshCommand } = await import('./commands/refresh.js');
+    await refreshCommand(options);
+  });
+
+program
   .command('serve')
   .description('Serve all project markdown files on a local web server')
   .option('-p, --port <port>', 'Port to serve on', '4000')

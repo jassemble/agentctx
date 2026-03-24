@@ -114,6 +114,64 @@ function titleToFilename(title: string): string {
     .replace(/^-|-$/g, '') + '.md';
 }
 
+// ── Living context scaffolding ─────────────────────────────────────────
+
+async function createLivingContext(contextDir: string): Promise<string[]> {
+  // Create modules/ directory
+  await mkdir(join(contextDir, 'modules'), { recursive: true });
+
+  const livingFiles: { path: string; content: string }[] = [
+    {
+      path: 'architecture.md',
+      content: `# Architecture
+
+## Overview
+<!-- Describe the high-level system design -->
+
+## Directory Structure
+<!-- Key directories and their purposes -->
+
+## Data Flow
+<!-- How data moves through the system -->
+`,
+    },
+    {
+      path: 'decisions.md',
+      content: `# Decisions
+
+<!-- Append new decisions at the top. Format:
+## [Date] Decision Title
+**Context:** Why this decision was needed
+**Decision:** What was chosen
+**Alternatives:** What else was considered
+**Consequences:** What this means going forward
+-->
+`,
+    },
+    {
+      path: 'status.md',
+      content: `# Status
+
+## In Progress
+<!-- Currently being worked on -->
+
+## Known Issues
+<!-- Bugs or technical debt -->
+
+## Recently Completed
+<!-- Last few completed items with dates -->
+`,
+    },
+  ];
+
+  const paths: string[] = [];
+  for (const file of livingFiles) {
+    await writeFile(join(contextDir, file.path), file.content, 'utf-8');
+    paths.push(`context/${file.path}`);
+  }
+  return paths;
+}
+
 // ── Skills-based init flow ─────────────────────────────────────────────
 
 async function initWithSkills(
@@ -155,6 +213,9 @@ async function initWithSkills(
     await writeFile(filePath, file.content, 'utf-8');
     contextFiles.push(`context/${file.relativePath}`);
   }
+
+  const livingPaths = await createLivingContext(contextDir);
+  contextFiles.push(...livingPaths);
 
   // Build config
   const config: Record<string, unknown> = {
@@ -331,6 +392,11 @@ async function initInteractive(
       await writeFile(join(agentctxDir, starter.file), starter.content, 'utf-8');
       contextFiles.push(starter.file);
     }
+  }
+
+  const livingPaths = await createLivingContext(contextDir);
+  for (const lp of livingPaths) {
+    if (!contextFiles.includes(lp)) contextFiles.push(lp);
   }
 
   // Build config
