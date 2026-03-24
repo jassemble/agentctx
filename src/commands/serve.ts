@@ -164,7 +164,8 @@ function getHTML(files: string[], projectName: string): string {
 
     /* Resize handle */
     .resize-handle { width: 4px; cursor: col-resize; background: transparent; flex-shrink: 0; position: relative; z-index: 5; }
-    .resize-handle:hover, .resize-handle.dragging { background: var(--accent); }
+    .resize-handle::after { content: ''; position: absolute; top: 0; bottom: 0; left: 1px; width: 2px; background: transparent; border-radius: 1px; transition: background 0.15s; }
+    .resize-handle:hover::after, .resize-handle.dragging::after { background: var(--accent); }
     .sidebar.collapsed + .resize-handle { display: none; }
 
     /* Hamburger */
