@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import { join, relative, extname, dirname } from 'node:path';
 import { exec } from 'node:child_process';
@@ -233,6 +233,38 @@ function getHTML(files: string[], projectName: string): string {
     .md hr { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
     .md img { max-width: 100%; border-radius: 8px; }
 
+    /* Edit mode */
+    .edit-wrap { display: flex; flex-direction: column; height: 100%; }
+    .edit-toolbar { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .edit-toolbar .filepath { font-size: 13px; color: var(--text-dim); font-family: 'SF Mono', 'Fira Code', monospace; }
+    .edit-btns { display: flex; gap: 8px; }
+    .edit-btns button { padding: 5px 14px; border-radius: 5px; border: 1px solid var(--border); font-size: 12px; cursor: pointer; transition: all 0.15s; }
+    .btn-save { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-save:hover { opacity: 0.85; }
+    .btn-cancel { background: var(--surface-2); color: var(--text); }
+    .btn-cancel:hover { background: var(--border); }
+    .edit-area { flex: 1; width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 16px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; line-height: 1.6; resize: none; outline: none; tab-size: 2; }
+    .edit-area:focus { border-color: var(--accent); }
+    .save-toast { position: fixed; bottom: 20px; right: 20px; background: var(--green); color: #000; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 30; }
+    .save-toast.show { opacity: 1; }
+
+    /* Content header actions */
+    .header-actions { display: flex; align-items: center; gap: 10px; }
+    .edit-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); padding: 3px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: all 0.15s; }
+    .edit-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Search */
+    .search-results { padding: 4px 8px 16px; overflow-y: auto; flex: 1; }
+    .search-result { padding: 6px 8px; border-radius: 5px; cursor: pointer; margin-bottom: 2px; }
+    .search-result:hover { background: var(--surface-2); }
+    .sr-file { font-size: 12px; color: var(--accent); font-weight: 500; margin-bottom: 2px; }
+    .sr-line { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sr-line em { font-style: normal; background: #d2992233; color: #d29922; border-radius: 2px; padding: 0 2px; }
+    .sr-num { color: var(--text-dim); font-family: monospace; margin-right: 4px; }
+    .search-mode .sidebar-files { display: none; }
+    .search-mode .search-results { display: block; }
+    .search-results { display: none; }
+
     .live { width: 6px; height: 6px; background: var(--green); border-radius: 50%; display: inline-block; margin-left: 6px; animation: pulse 2s infinite; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
 
@@ -260,7 +292,9 @@ function getHTML(files: string[], projectName: string): string {
       <input type="text" id="search" placeholder="Find docs..." autocomplete="off">
     </div>
     <nav class="sidebar-files" id="file-list">${sidebarHTML}</nav>
+    <div class="search-results" id="search-results"></div>
   </aside>
+  <div class="save-toast" id="save-toast">Saved</div>
 
   <div class="resize-handle" id="resize-handle"></div>
 
@@ -288,23 +322,37 @@ function getHTML(files: string[], projectName: string): string {
     const links = document.querySelectorAll('.tree-file');
     let currentFile = null;
 
-    async function loadFile(path) {
+    let editMode = false;
+    const sidebarEl = document.getElementById('sidebar');
+    const searchResultsEl = document.getElementById('search-results');
+    const toast = document.getElementById('save-toast');
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    async function loadFile(path, skipScroll) {
       currentFile = path;
+      editMode = false;
       const res = await fetch('/api/file?path=' + encodeURIComponent(path));
       const text = await res.text();
-
       const tokens = Math.ceil(text.split(/\\s+/).filter(w => w.length > 0).length * 1.33);
 
       contentEl.innerHTML =
-        '<div class="content-header"><span>' + path + '</span><span class="token-count">' + tokens.toLocaleString() + ' tokens</span></div>' +
+        '<div class="content-header"><span>' + path + '</span><div class="header-actions"><span class="token-count">' + tokens.toLocaleString() + ' tokens</span><button class="edit-btn" id="edit-btn">Edit</button></div></div>' +
         '<div class="md">' + marked.parse(text) + '</div>';
 
       contentEl.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
-      contentEl.scrollTop = 0;
+      if (!skipScroll) contentEl.scrollTop = 0;
 
       links.forEach(l => l.classList.remove('active'));
       document.querySelector('[data-path="' + CSS.escape(path) + '"]')?.classList.add('active');
       history.replaceState(null, '', '#' + encodeURIComponent(path));
+
+      // Edit button
+      document.getElementById('edit-btn').onclick = () => enterEditMode(path, text);
 
       // Build TOC
       const headings = contentEl.querySelectorAll('.md h1, .md h2, .md h3, .md h4');
@@ -320,19 +368,104 @@ function getHTML(files: string[], projectName: string): string {
       });
     }
 
+    function enterEditMode(path, text) {
+      editMode = true;
+      tocEl.innerHTML = '<div style="font-size:12px;color:var(--text-dim)">Editing...</div>';
+      contentEl.innerHTML =
+        '<div class="edit-wrap">' +
+          '<div class="edit-toolbar"><span class="filepath">' + path + '</span><div class="edit-btns"><button class="btn-cancel" id="cancel-btn">Cancel</button><button class="btn-save" id="save-btn">Save</button></div></div>' +
+          '<textarea class="edit-area" id="editor"></textarea>' +
+        '</div>';
+      const editor = document.getElementById('editor');
+      editor.value = text;
+      editor.focus();
+
+      // Tab key inserts spaces
+      editor.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const s = editor.selectionStart, end = editor.selectionEnd;
+          editor.value = editor.value.substring(0, s) + '  ' + editor.value.substring(end);
+          editor.selectionStart = editor.selectionEnd = s + 2;
+        }
+        if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          document.getElementById('save-btn').click();
+        }
+      });
+
+      document.getElementById('cancel-btn').onclick = () => loadFile(path);
+      document.getElementById('save-btn').onclick = async () => {
+        const body = editor.value;
+        const r = await fetch('/api/save?path=' + encodeURIComponent(path), { method: 'POST', body });
+        if (r.ok) {
+          showToast('Saved');
+          loadFile(path);
+        } else {
+          showToast('Save failed');
+        }
+      };
+    }
+
     links.forEach(link => {
       link.addEventListener('click', (e) => { e.preventDefault(); loadFile(link.dataset.path); });
     });
 
-    document.getElementById('search').addEventListener('input', function() {
-      const q = this.value.toLowerCase();
-      links.forEach(link => { link.style.display = link.dataset.path.toLowerCase().includes(q) ? '' : 'none'; });
-      // Show/hide folders based on whether they have visible children
-      document.querySelectorAll('.tree-folder').forEach(folder => {
-        const hasVisible = Array.from(folder.querySelectorAll('.tree-file')).some(l => l.style.display !== 'none');
-        folder.style.display = hasVisible ? '' : 'none';
-        if (q && hasVisible) folder.classList.remove('collapsed');
-      });
+    // Search — switches between filter mode and full-text search
+    let searchTimeout = null;
+    const searchInput = document.getElementById('search');
+
+    searchInput.addEventListener('input', function() {
+      const q = this.value;
+      clearTimeout(searchTimeout);
+
+      if (q.length < 2) {
+        // Filter mode
+        sidebarEl.classList.remove('search-mode');
+        const ql = q.toLowerCase();
+        links.forEach(link => { link.style.display = link.dataset.path.toLowerCase().includes(ql) ? '' : 'none'; });
+        document.querySelectorAll('.tree-folder').forEach(folder => {
+          const hasVisible = Array.from(folder.querySelectorAll('.tree-file')).some(l => l.style.display !== 'none');
+          folder.style.display = hasVisible ? '' : 'none';
+          if (ql && hasVisible) folder.classList.remove('collapsed');
+        });
+        return;
+      }
+
+      // Full-text search (debounced)
+      searchTimeout = setTimeout(async () => {
+        const res = await fetch('/api/search?q=' + encodeURIComponent(q));
+        const results = await res.json();
+        sidebarEl.classList.add('search-mode');
+
+        if (results.length === 0) {
+          searchResultsEl.innerHTML = '<div style="padding:12px;color:var(--text-dim);font-size:12px">No results</div>';
+          return;
+        }
+
+        const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const highlight = (text, q) => {
+          const re = new RegExp('(' + q.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&') + ')', 'gi');
+          return esc(text).replace(re, '<em>$1</em>');
+        };
+
+        searchResultsEl.innerHTML = results.map(r =>
+          '<div class="search-result" data-path="' + esc(r.path) + '">' +
+            '<div class="sr-file">' + esc(r.path) + '</div>' +
+            r.matches.map(m => '<div class="sr-line"><span class="sr-num">L' + m.line + '</span>' + highlight(m.text, q) + '</div>').join('') +
+          '</div>'
+        ).join('');
+
+        searchResultsEl.querySelectorAll('.search-result').forEach(el => {
+          el.addEventListener('click', () => {
+            loadFile(el.dataset.path);
+            searchInput.value = '';
+            sidebarEl.classList.remove('search-mode');
+            links.forEach(l => { l.style.display = ''; });
+            document.querySelectorAll('.tree-folder').forEach(f => { f.style.display = ''; });
+          });
+        });
+      }, 250);
     });
 
     // Live reload
@@ -442,6 +575,47 @@ export async function serveCommand(options: ServeOptions): Promise<void> {
       } catch {
         res.writeHead(404); res.end('Not found');
       }
+      return;
+    }
+
+    // Save file (edit mode)
+    if (url.pathname === '/api/save' && req.method === 'POST') {
+      const filePath = url.searchParams.get('path');
+      if (!filePath) { res.writeHead(400); res.end('Missing path'); return; }
+      const resolved = join(projectRoot, filePath);
+      if (!resolved.startsWith(projectRoot)) { res.writeHead(403); res.end('Forbidden'); return; }
+      const chunks: Buffer[] = [];
+      req.on('data', (c) => chunks.push(c));
+      req.on('end', async () => {
+        try {
+          await writeFile(resolved, Buffer.concat(chunks).toString('utf-8'), 'utf-8');
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end('{"ok":true}');
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: String(err) }));
+        }
+      });
+      return;
+    }
+
+    // Full-text search
+    if (url.pathname === '/api/search') {
+      const q = (url.searchParams.get('q') || '').toLowerCase();
+      if (q.length < 2) { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('[]'); return; }
+      const results: { path: string; matches: { line: number; text: string }[] }[] = [];
+      for (const f of files) {
+        try {
+          const content = await readFile(join(projectRoot, f), 'utf-8');
+          const matches: { line: number; text: string }[] = [];
+          content.split('\n').forEach((line, i) => {
+            if (line.toLowerCase().includes(q)) matches.push({ line: i + 1, text: line.trim().slice(0, 150) });
+          });
+          if (matches.length > 0) results.push({ path: f, matches: matches.slice(0, 5) });
+        } catch { /* skip */ }
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+      res.end(JSON.stringify(results));
       return;
     }
 
