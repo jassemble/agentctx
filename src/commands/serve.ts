@@ -159,7 +159,18 @@ function getHTML(files: string[], projectName: string): string {
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
 
     /* Sidebar */
-    .sidebar { width: 250px; min-width: 250px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+    .sidebar { width: 250px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; transition: width 0.2s ease, opacity 0.2s ease; overflow: hidden; }
+    .sidebar.collapsed { width: 0; border-right: none; opacity: 0; pointer-events: none; }
+
+    /* Resize handle */
+    .resize-handle { width: 4px; cursor: col-resize; background: transparent; flex-shrink: 0; position: relative; z-index: 5; }
+    .resize-handle:hover, .resize-handle.dragging { background: var(--accent); }
+    .sidebar.collapsed + .resize-handle { display: none; }
+
+    /* Hamburger */
+    .hamburger { position: fixed; top: 12px; left: 12px; z-index: 20; background: var(--surface); border: 1px solid var(--border); color: var(--text); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; display: none; align-items: center; justify-content: center; transition: opacity 0.2s; }
+    .hamburger svg { width: 16px; height: 16px; }
+    .hamburger.visible { display: flex; }
     .sidebar-header { padding: 16px 16px 14px; border-bottom: 1px solid var(--border); }
     .sidebar-header h1 { font-size: 13px; font-weight: 600; letter-spacing: 0.3px; display: flex; align-items: center; gap: 6px; }
     .sidebar-header .sub { font-size: 11px; color: var(--text-dim); margin-top: 4px; font-weight: 400; }
@@ -228,15 +239,14 @@ function getHTML(files: string[], projectName: string): string {
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-    @media (max-width: 768px) {
-      .sidebar { display: none; }
-      .toc { display: none; }
-      .content { padding: 16px; }
-    }
   </style>
 </head>
 <body>
-  <aside class="sidebar">
+  <button class="hamburger" id="hamburger" title="Show sidebar">
+    <svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+  </button>
+
+  <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <h1>
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="3" stroke="var(--accent)" stroke-width="1.5"/><path d="M5 5.5h6M5 8h4M5 10.5h5" stroke="var(--accent)" stroke-width="1.2" stroke-linecap="round"/></svg>
@@ -250,6 +260,8 @@ function getHTML(files: string[], projectName: string): string {
     </div>
     <nav class="sidebar-files" id="file-list">${sidebarHTML}</nav>
   </aside>
+
+  <div class="resize-handle" id="resize-handle"></div>
 
   <div class="content-wrapper">
     <main class="content" id="content"></main>
@@ -325,6 +337,50 @@ function getHTML(files: string[], projectName: string): string {
     // Live reload
     const es = new EventSource('/api/events');
     es.onmessage = () => { if (currentFile) loadFile(currentFile); };
+
+    // Resizable sidebar
+    const sidebar = document.getElementById('sidebar');
+    const handle = document.getElementById('resize-handle');
+    const hamburger = document.getElementById('hamburger');
+    const MIN_W = 180, MAX_W = 500, SNAP_CLOSE = 100;
+    let dragging = false;
+
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      dragging = true;
+      handle.classList.add('dragging');
+      sidebar.style.transition = 'none';
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const w = e.clientX;
+      if (w < SNAP_CLOSE) {
+        sidebar.classList.add('collapsed');
+        hamburger.classList.add('visible');
+      } else {
+        sidebar.classList.remove('collapsed');
+        hamburger.classList.remove('visible');
+        sidebar.style.width = Math.min(Math.max(w, MIN_W), MAX_W) + 'px';
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+      sidebar.style.transition = '';
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+
+    hamburger.addEventListener('click', () => {
+      sidebar.classList.remove('collapsed');
+      sidebar.style.width = '250px';
+      hamburger.classList.remove('visible');
+    });
 
     // Init
     if (location.hash) loadFile(decodeURIComponent(location.hash.slice(1)));
