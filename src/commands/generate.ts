@@ -2,8 +2,8 @@ import { dirname, resolve } from 'node:path';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { createTwoFilesPatch } from 'diff';
-import { findConfigPath, loadConfig } from '../core/config.js';
-import { loadContextModules } from '../core/context.js';
+import { findConfigPath } from '../core/config.js';
+import { resolveInheritance } from '../core/inheritance.js';
 import { runGenerators } from '../generators/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -20,16 +20,14 @@ export async function generateCommand(options: {
     process.exit(1);
   }
 
-  const config = await loadConfig(configPath);
-  const agentctxDir = dirname(configPath); // .agentctx/ directory
-  const projectRoot = dirname(agentctxDir); // parent of .agentctx/
+  const resolved = await resolveInheritance(configPath);
+  const { config, modules, projectRoot } = resolved;
+  const agentctxDir = resolved.agentctxDir;
 
   if (options.verbose) {
     logger.dim(`Config: ${configPath}`);
     logger.dim(`Project root: ${projectRoot}`);
   }
-
-  const modules = await loadContextModules(config, agentctxDir);
 
   if (options.verbose) {
     logger.dim(`Loaded ${modules.length} context module(s)`);

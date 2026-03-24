@@ -1,4 +1,4 @@
-import { resolve, join, basename, extname, dirname } from 'node:path';
+import { resolve, join, basename, extname, dirname, relative } from 'node:path';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { stringify as toYaml } from 'yaml';
@@ -10,6 +10,7 @@ interface InitOptions {
   interactive?: boolean;
   force?: boolean;
   scan?: boolean;
+  app?: string;
 }
 
 interface DetectedFile {
@@ -256,6 +257,18 @@ async function initWithSkills(
     },
   };
 
+  // If this is an app-level init, add inheritance
+  if (options.app) {
+    const rootAgentctx = join(process.cwd(), '.agentctx');
+    if (existsSync(rootAgentctx)) {
+      const relPath = relative(projectRoot, dirname(rootAgentctx));
+      config.inherit = {
+        from: join(relPath, '.agentctx'),
+        strategy: 'merge',
+      };
+    }
+  }
+
   await writeFile(join(agentctxDir, 'config.yaml'), toYaml(config, { lineWidth: 100 }), 'utf-8');
   createSpinner.stop('Created .agentctx/');
 
@@ -471,6 +484,18 @@ async function initInteractive(
     outputs.copilot = { enabled: true, path: '.github/copilot-instructions.md', max_tokens: 4000 };
   }
 
+  // If this is an app-level init, add inheritance
+  if (options.app) {
+    const rootAgentctx = join(process.cwd(), '.agentctx');
+    if (existsSync(rootAgentctx)) {
+      const relPath = relative(projectRoot, dirname(rootAgentctx));
+      config.inherit = {
+        from: join(relPath, '.agentctx'),
+        strategy: 'merge',
+      };
+    }
+  }
+
   // Write config.yaml
   const configYaml = toYaml(config, { lineWidth: 100 });
   await writeFile(join(agentctxDir, 'config.yaml'), configYaml, 'utf-8');
@@ -532,7 +557,17 @@ async function generateOutputs(projectRoot: string, agentctxDir: string): Promis
 // ── Entry point ────────────────────────────────────────────────────────
 
 export async function initCommand(skills: string[], options: InitOptions): Promise<void> {
-  const projectRoot = process.cwd();
+  let projectRoot = process.cwd();
+
+  // If --app, set up inside the app directory
+  if (options.app) {
+    projectRoot = resolve(process.cwd(), options.app);
+    if (!existsSync(projectRoot)) {
+      logger.error(`App directory not found: ${options.app}`);
+      process.exit(1);
+    }
+  }
+
   const agentctxDir = join(projectRoot, '.agentctx');
   const contextDir = join(agentctxDir, 'context');
 

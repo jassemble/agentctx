@@ -1,0 +1,13 @@
+version: 1
+project:
+  name: backend-app
+  language: typescript
+context:
+  - context/api.md
+outputs:
+  claude:
+    enabled: true
+    path: CLAUDE.md
+inherit:
+  from: ../../.agentctx
+  strategy: merge

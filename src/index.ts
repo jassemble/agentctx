@@ -14,6 +14,7 @@ program
   .option('--no-interactive', 'Skip interactive prompts, use defaults')
   .option('--force', 'Overwrite existing .agentctx/ directory')
   .option('--scan', 'Also run codebase scan after init')
+  .option('--app <path>', 'Initialize for a specific app in a monorepo (e.g., --app apps/backend)')
   .action(async (skills, options) => {
     const { initCommand } = await import('./commands/init.js');
     await initCommand(skills, options);

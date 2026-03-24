@@ -1,7 +1,7 @@
-import { dirname, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { findConfigPath, loadConfig } from '../core/config.js';
-import { loadContextModules } from '../core/context.js';
+import { findConfigPath } from '../core/config.js';
+import { resolveInheritance } from '../core/inheritance.js';
 import { runGenerators } from '../generators/index.js';
 import { estimateTokens } from '../utils/tokens.js';
 import { logger } from '../utils/logger.js';
@@ -13,11 +13,9 @@ export async function statusCommand(): Promise<void> {
     process.exit(1);
   }
 
-  const config = await loadConfig(configPath);
-  const agentctxDir = dirname(configPath);
-  const projectRoot = dirname(agentctxDir);
+  const resolved = await resolveInheritance(configPath);
+  const { config, modules, projectRoot } = resolved;
 
-  const modules = await loadContextModules(config, agentctxDir);
   const results = await runGenerators(modules, config);
 
   // Project name

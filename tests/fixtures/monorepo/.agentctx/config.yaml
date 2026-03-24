@@ -1,0 +1,10 @@
+version: 1
+project:
+  name: monorepo-root
+  language: typescript
+context:
+  - context/shared.md
+outputs:
+  claude:
+    enabled: true
+    path: CLAUDE.md

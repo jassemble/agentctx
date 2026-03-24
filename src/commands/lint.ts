@@ -1,6 +1,5 @@
-import { dirname } from 'node:path';
-import { findConfigPath, loadConfig } from '../core/config.js';
-import { loadContextModules } from '../core/context.js';
+import { findConfigPath } from '../core/config.js';
+import { resolveInheritance } from '../core/inheritance.js';
 import { logger } from '../utils/logger.js';
 import { runLintChecks, type LintResult } from '../linter/index.js';
 
@@ -15,10 +14,9 @@ export async function lintCommand(options: {
     process.exit(1);
   }
 
-  const config = await loadConfig(configPath);
-  const agentctxDir = dirname(configPath);
-
-  const modules = await loadContextModules(config, agentctxDir);
+  const resolved = await resolveInheritance(configPath);
+  const { config, modules } = resolved;
+  const agentctxDir = resolved.agentctxDir;
   if (options.ai) {
     logger.info('Running AI-powered analysis (using claude CLI)...\n');
   }
