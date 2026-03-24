@@ -82,4 +82,21 @@ program
     await serveCommand(options);
   });
 
+program
+  .command('doctor')
+  .description('Check setup health and get personalized recommendations')
+  .action(async () => {
+    const { doctorCommand } = await import('./commands/doctor.js');
+    await doctorCommand();
+  });
+
+program
+  .command('update')
+  .description('Update installed skills to latest versions')
+  .option('--dry-run', 'Show what would change without applying')
+  .action(async (options) => {
+    const { updateCommand } = await import('./commands/update.js');
+    await updateCommand(options);
+  });
+
 program.parse();
