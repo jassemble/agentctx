@@ -22,6 +22,8 @@ commands:
   - commands/deploy-check.md
   - commands/new-module.md
   - commands/project-status.md
+  - commands/rfp.md
+  - commands/orchestrate.md
 scaffolds:
   - src: scaffolds/INDEX.md
     dest: specs/INDEX.md
