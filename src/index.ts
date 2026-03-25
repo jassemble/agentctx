@@ -128,4 +128,14 @@ program
     await impeccableCommand(action, name);
   });
 
+program
+  .command('dashboard')
+  .description('Project dashboard — specs, modules, health, activity')
+  .option('-p, --port <port>', 'Port to serve on', '4000')
+  .option('--no-open', 'Don\'t open browser automatically')
+  .action(async (options) => {
+    const { dashboardCommand } = await import('./commands/dashboard.js');
+    await dashboardCommand(options);
+  });
+
 program.parse();
