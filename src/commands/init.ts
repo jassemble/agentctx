@@ -692,6 +692,34 @@ async function initInteractive(
     // Skills module not available yet, skip
   }
 
+  // Agent personality selection (if not passed via --agent)
+  if (!options.agent) {
+    try {
+      const { listAgents } = await import('../core/agents.js');
+      const agents = await listAgents();
+      if (agents.length > 0) {
+        const agentSelection = await p.select({
+          message: 'Choose an AI agent personality (optional)',
+          options: [
+            { value: '_none', label: 'None — skip agent personality' },
+            ...agents.map(a => ({
+              value: a.slug,
+              label: `${a.frontmatter.emoji || ''} ${a.frontmatter.name} — ${a.frontmatter.description?.slice(0, 60)}...`,
+            })),
+          ],
+          initialValue: '_none',
+        });
+
+        if (p.isCancel(agentSelection)) { p.cancel('Init cancelled.'); process.exit(0); }
+        if (agentSelection !== '_none') {
+          options.agent = agentSelection as string;
+        }
+      }
+    } catch {
+      // Agents module not available, skip
+    }
+  }
+
   const outputTargets = await p.multiselect({
     message: 'Which output targets?',
     options: [
