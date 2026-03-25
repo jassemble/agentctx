@@ -237,7 +237,8 @@ async function generateAiModules(
     }
 
     const s = p.spinner();
-    s.start('Scanning codebase to generate module files...');
+
+    logger.dim('  Gathering: directory tree, configs, source files...');
 
     // Build context: directory tree + key files
     const IGNORE = new Set(['node_modules', '.git', '.next', '__pycache__', 'dist', '.agentctx', '.turbo', '.cache', 'coverage']);
@@ -264,28 +265,34 @@ async function generateAiModules(
     const sections: string[] = [];
     sections.push(`## Directory Structure\n\`\`\`\n${getTree(projectRoot)}\`\`\``);
 
+    let filesGathered = 1; // directory tree
     for (const manifest of ['package.json', 'pyproject.toml', 'go.mod', 'Cargo.toml']) {
       const mp = join(projectRoot, manifest);
       if (existsSync(mp)) {
-        try { sections.push(`## ${manifest}\n\`\`\`\n${readFileSync(mp, 'utf-8')}\`\`\``); } catch { /* ignore */ }
+        try { sections.push(`## ${manifest}\n\`\`\`\n${readFileSync(mp, 'utf-8')}\`\`\``); filesGathered++; } catch { /* ignore */ }
         break;
       }
     }
 
+    let sourceCount = 0;
     for (const dir of ['src', 'app', 'lib', 'pages']) {
       const d = join(projectRoot, dir);
       if (!existsSync(d)) continue;
       try {
-        let count = 0;
         for (const entry of readdirSync(d, { withFileTypes: true })) {
           if (!entry.isFile() || !/\.(ts|tsx|js|jsx|py|go|rs)$/.test(entry.name)) continue;
           if (/\.(test|spec|config)\./i.test(entry.name)) continue;
-          const content = readFileSync(join(d, entry.name), 'utf-8').split('\n').slice(0, 150).join('\n');
+          const content = readFileSync(join(d, entry.name), 'utf-8').split('\n').slice(0, 100).join('\n');
           sections.push(`## ${dir}/${entry.name}\n\`\`\`\n${content}\`\`\``);
-          if (++count >= 5) break;
+          sourceCount++;
+          if (sourceCount >= 3) break;
         }
       } catch { /* ignore */ }
+      if (sourceCount >= 3) break;
     }
+
+    logger.dim(`  Gathered: ${filesGathered} config files, ${sourceCount} source files`);
+    s.start('Sending to Claude for analysis (30-60s)...');
 
     // Read existing module files for reconciliation
     const existingModules: { filename: string; content: string }[] = [];
