@@ -8,7 +8,7 @@ import * as p from '@clack/prompts';
 import { logger } from '../utils/logger.js';
 import { spawnWithStdin } from '../utils/exec.js';
 import { findConfigPath, loadConfig } from '../core/config.js';
-import { resolveSkill, resolveSkills, composeSkills } from '../core/skills.js';
+import { resolveSkills, composeSkills } from '../core/skills.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -175,63 +175,7 @@ async function validateModules(
   }
 }
 
-// ── Step 2: Update skills to latest ───────────────────────────────────
-
-async function updateSkills(
-  projectRoot: string,
-  config: Record<string, unknown>,
-): Promise<number> {
-  const installedSkills = (config.skills ?? []) as string[];
-  if (installedSkills.length === 0) return 0;
-
-  const s = p.spinner();
-  s.start('Checking skill updates...');
-
-  let totalUpdated = 0;
-
-  for (const skillName of installedSkills) {
-    let resolved;
-    try { resolved = await resolveSkill(skillName); } catch { continue; }
-
-    // Compare context files
-    for (const contextPath of resolved.yaml.context) {
-      const builtinPath = join(resolved.dir, contextPath);
-      const installedPath = join(projectRoot, '.agentctx', 'context', basename(contextPath));
-      if (!existsSync(builtinPath)) continue;
-
-      const builtinContent = await readFile(builtinPath, 'utf-8');
-      if (existsSync(installedPath)) {
-        const installedContent = await readFile(installedPath, 'utf-8');
-        if (builtinContent === installedContent) continue;
-      }
-
-      await writeFile(installedPath, builtinContent, 'utf-8');
-      totalUpdated++;
-    }
-
-    // Compare command files
-    for (const cmdPath of resolved.yaml.commands) {
-      const builtinPath = join(resolved.dir, cmdPath);
-      const installedPath = join(projectRoot, '.claude', 'commands', basename(cmdPath));
-      if (!existsSync(builtinPath)) continue;
-
-      const builtinContent = await readFile(builtinPath, 'utf-8');
-      if (existsSync(installedPath)) {
-        const installedContent = await readFile(installedPath, 'utf-8');
-        if (builtinContent === installedContent) continue;
-      }
-
-      await mkdir(join(projectRoot, '.claude', 'commands'), { recursive: true });
-      await writeFile(installedPath, builtinContent, 'utf-8');
-      totalUpdated++;
-    }
-  }
-
-  s.stop(totalUpdated > 0 ? `Updated ${totalUpdated} skill file(s)` : 'Skills up to date');
-  return totalUpdated;
-}
-
-// ── Step 3: Add new skills ────────────────────────────────────────────
+// ── Step 2: Add new skills ────────────────────────────────────────────
 
 async function addSkills(
   skillNames: string[],
@@ -364,20 +308,17 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
     }
   }
 
-  // Step 2: Update existing skills to latest
-  await updateSkills(projectRoot, rawConfig);
-
-  // Step 3: Validate modules against codebase (AI — opt-in)
+  // Step 2: Validate modules against codebase (AI — opt-in)
   if (options.ai) {
     logger.info('Running AI validation (using claude CLI)...');
     await validateModules(projectRoot, modulesDir, contextFiles);
   }
 
-  // Step 4: Write updated config
+  // Step 3: Write updated config
   rawConfig.context = contextFiles;
   await writeFile(configPath, toYaml(rawConfig, { lineWidth: 100 }), 'utf-8');
 
-  // Step 5: Regenerate outputs
+  // Step 4: Regenerate outputs
   await regenerateOutputs(projectRoot, agentctxDir);
 
   p.outro('Sync complete.');

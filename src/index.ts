@@ -105,7 +105,7 @@ program
 
 program
   .command('update')
-  .description('Update installed skills to latest versions')
+  .description('Check and install newer versions of skills, agents, and commands')
   .option('--dry-run', 'Show what would change without applying')
   .action(async (options) => {
     const { updateCommand } = await import('./commands/update.js');
