@@ -13,6 +13,7 @@ interface InitOptions {
   force?: boolean;
   scan?: boolean;
   app?: string;
+  agent?: string;
 }
 
 interface DetectedFile {
@@ -455,6 +456,24 @@ async function initWithSkills(
     await generateAiModules(projectRoot, contextDir, contextFiles);
   }
 
+  // Handle --agent option
+  let agentSlug: string | undefined;
+  if (options.agent) {
+    try {
+      const { resolveAgent, formatAgentForContext } = await import('../core/agents.js');
+      const agent = await resolveAgent(options.agent);
+      const agentContent = formatAgentForContext(agent);
+      await writeFile(join(contextDir, 'agent.md'), agentContent, 'utf-8');
+      if (!contextFiles.includes('context/agent.md')) {
+        contextFiles.push('context/agent.md');
+      }
+      agentSlug = agent.slug;
+      logger.success(`Agent: ${agent.frontmatter.emoji ?? ''} ${agent.frontmatter.name}`);
+    } catch (err) {
+      logger.warn(`Could not add agent: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   // Build config
   const config: Record<string, unknown> = {
     version: 1,
@@ -462,6 +481,7 @@ async function initWithSkills(
       name: projectName,
       ...(language ? { language } : {}),
     },
+    ...(agentSlug ? { agent: agentSlug } : {}),
     skills: composed.skillNames,
     context: contextFiles,
     outputs: {

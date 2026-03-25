@@ -14,6 +14,7 @@ const execFileAsync = promisify(execFile);
 
 interface SyncOptions {
   add?: string[];
+  agent?: string;
   noAi?: boolean;
 }
 
@@ -342,6 +343,25 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
   // Step 1: Add new skills (if --add)
   if (options.add && options.add.length > 0) {
     await addSkills(options.add, projectRoot, rawConfig);
+  }
+
+  // Step 1b: Add agent (if --agent)
+  if (options.agent) {
+    try {
+      const { resolveAgent, formatAgentForContext } = await import('../core/agents.js');
+      const agent = await resolveAgent(options.agent);
+      const contextDir = join(agentctxDir, 'context');
+      await mkdir(contextDir, { recursive: true });
+      const agentContent = formatAgentForContext(agent);
+      await writeFile(join(contextDir, 'agent.md'), agentContent, 'utf-8');
+      rawConfig.agent = agent.slug;
+      if (!contextFiles.includes('context/agent.md')) {
+        contextFiles.push('context/agent.md');
+      }
+      logger.success(`Agent: ${agent.frontmatter.emoji ?? ''} ${agent.frontmatter.name}`);
+    } catch (err) {
+      logger.warn(`Could not add agent: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   // Step 2: Update existing skills to latest

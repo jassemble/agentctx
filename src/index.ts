@@ -15,6 +15,7 @@ program
   .option('--force', 'Overwrite existing .agentctx/ directory')
   .option('--scan', 'Also run codebase scan after init')
   .option('--app <path>', 'Initialize for a specific app in a monorepo (e.g., --app apps/backend)')
+  .option('--agent <name>', 'Add an AI agent personality (from Agency Agents)')
   .action(async (skills, options) => {
     const { initCommand } = await import('./commands/init.js');
     await initCommand(skills, options);
@@ -67,6 +68,7 @@ program
   .command('sync')
   .description('Keep context current — validate modules, update skills, regenerate outputs')
   .option('--add <skills...>', 'Add new skills')
+  .option('--agent <name>', 'Add an AI agent personality (from Agency Agents)')
   .option('--no-ai', 'Skip AI validation')
   .action(async (options) => {
     const { syncCommand } = await import('./commands/sync.js');
@@ -107,6 +109,14 @@ program
   .action(async (options) => {
     const { updateCommand } = await import('./commands/update.js');
     await updateCommand(options);
+  });
+
+program
+  .command('agents <action> [name]')
+  .description('Browse and manage AI agent personalities')
+  .action(async (action, name) => {
+    const { agentsCommand } = await import('./commands/agents.js');
+    await agentsCommand(action, name);
   });
 
 program.parse();

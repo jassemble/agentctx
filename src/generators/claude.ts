@@ -82,8 +82,8 @@ export function generateClaude(
 
   const filtered = modules.filter((m) => shouldIncludeModule(m, sections));
 
-  // Separate modules by tier
-  const conventionModules = filtered.filter(m => !isModuleFile(m, config));
+  // Separate modules by tier (exclude agent.md from normal rendering — handled separately)
+  const conventionModules = filtered.filter(m => !isModuleFile(m, config) && !(config.agent && m.filename === 'agent.md'));
   const featureModules = filtered.filter(m => isModuleFile(m, config));
 
   const parts: string[] = [
@@ -104,6 +104,22 @@ export function generateClaude(
       meta.push(`**Skills:** ${config.skills.filter(s => s !== 'workflow').join(', ')}`);
     }
     parts.push(meta.join(' | '));
+  }
+
+  // ── Agent identity (if configured) ──────────────────────────────────
+
+  if (config.agent) {
+    const agentModule = filtered.find(m => m.filename === 'agent.md');
+    if (agentModule) {
+      parts.push('');
+      parts.push('## Agent Identity');
+      parts.push('');
+      parts.push(`> Agent: ${agentModule.title} — powered by [Agency Agents](https://github.com/msitarzewski/agency-agents)`);
+      parts.push('');
+      parts.push(stripHeading(agentModule.content));
+      parts.push('');
+      parts.push('---');
+    }
   }
 
   // Module index (L1 summary) — only if there are feature modules
