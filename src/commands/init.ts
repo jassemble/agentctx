@@ -128,6 +128,18 @@ async function createLivingContext(contextDir: string): Promise<string[]> {
   await mkdir(join(contextDir, 'agents'), { recursive: true });
   await mkdir(join(contextDir, 'references'), { recursive: true });
 
+  // Helper: only write file if it doesn't exist or is still scaffold template
+  const writeIfNew = async (filePath: string, content: string): Promise<boolean> => {
+    if (existsSync(filePath)) {
+      const existing = readFileSync(filePath, 'utf-8');
+      // Don't overwrite if user has customized it (has real content beyond placeholders)
+      const realLines = existing.split('\n').filter(l => l.trim() && !l.startsWith('<!--') && !l.startsWith('#'));
+      if (realLines.length > 3) return false; // User has customized — preserve
+    }
+    await writeFile(filePath, content, 'utf-8');
+    return true;
+  };
+
   const livingFiles: { path: string; content: string }[] = [
     {
       path: 'architecture.md',
@@ -207,7 +219,7 @@ Record every non-trivial architectural decision here. Newest first.
 
   const paths: string[] = [];
   for (const file of livingFiles) {
-    await writeFile(join(contextDir, file.path), file.content, 'utf-8');
+    await writeIfNew(join(contextDir, file.path), file.content);
     paths.push(`context/${file.path}`);
   }
   return paths;
@@ -548,8 +560,10 @@ async function initWithSkills(
   if (composed.scaffolds.length > 0) {
     for (const scaffold of composed.scaffolds) {
       const destPath = join(projectRoot, scaffold.dest);
-      await mkdir(dirname(destPath), { recursive: true });
-      await writeFile(destPath, scaffold.content, 'utf-8');
+      if (!existsSync(destPath)) {
+        await mkdir(dirname(destPath), { recursive: true });
+        await writeFile(destPath, scaffold.content, 'utf-8');
+      }
     }
   }
 
@@ -558,24 +572,31 @@ async function initWithSkills(
     await generateAiModules(projectRoot, contextDir, contextFiles);
   }
 
-  // Handle --agent option
-  let agentSlug: string | undefined;
+  // Handle --agent option (supports multiple, comma-separated)
+  const agentSlugs: string[] = [];
   if (options.agent) {
+    const agentNames = options.agent.split(',').map((s: string) => s.trim()).filter(Boolean);
     try {
       const { resolveAgent, formatAgentForContext } = await import('../core/agents.js');
-      const agent = await resolveAgent(options.agent);
-      const agentContent = formatAgentForContext(agent);
-      const agentFilename = `${agent.slug}.md`;
       await mkdir(join(contextDir, 'agents'), { recursive: true });
-      await writeFile(join(contextDir, 'agents', agentFilename), agentContent, 'utf-8');
-      const agentContextPath = `context/agents/${agentFilename}`;
-      if (!contextFiles.includes(agentContextPath)) {
-        contextFiles.push(agentContextPath);
+      for (const name of agentNames) {
+        try {
+          const agent = await resolveAgent(name);
+          const agentContent = formatAgentForContext(agent);
+          const agentFilename = `${agent.slug}.md`;
+          await writeFile(join(contextDir, 'agents', agentFilename), agentContent, 'utf-8');
+          const agentContextPath = `context/agents/${agentFilename}`;
+          if (!contextFiles.includes(agentContextPath)) {
+            contextFiles.push(agentContextPath);
+          }
+          agentSlugs.push(agent.slug);
+          logger.success(`Agent: ${agent.frontmatter.emoji ?? ''} ${agent.frontmatter.name}`);
+        } catch (err) {
+          logger.warn(`Could not add agent "${name}": ${err instanceof Error ? err.message : err}`);
+        }
       }
-      agentSlug = agent.slug;
-      logger.success(`Agent: ${agent.frontmatter.emoji ?? ''} ${agent.frontmatter.name}`);
     } catch (err) {
-      logger.warn(`Could not add agent: ${err instanceof Error ? err.message : err}`);
+      logger.warn(`Could not load agents: ${err instanceof Error ? err.message : err}`);
     }
   }
 
@@ -586,7 +607,8 @@ async function initWithSkills(
       name: projectName,
       ...(language ? { language } : {}),
     },
-    ...(agentSlug ? { agent: agentSlug } : {}),
+    ...(agentSlugs.length === 1 ? { agent: agentSlugs[0] } : {}),
+    ...(agentSlugs.length > 1 ? { agents: agentSlugs } : {}),
     skills: composed.skillNames,
     context: contextFiles,
     outputs: {
@@ -724,20 +746,18 @@ async function initInteractive(
       const agents = await listAgents();
       if (agents.length > 0) {
         const agentSelection = await p.select({
-          message: 'Choose an AI agent personality (optional)',
-          options: [
-            { value: '_none', label: 'None — skip agent personality' },
-            ...agents.map(a => ({
-              value: a.slug,
-              label: `${a.frontmatter.emoji || ''} ${a.frontmatter.name} — ${a.frontmatter.description?.slice(0, 60)}...`,
-            })),
-          ],
-          initialValue: '_none',
+          message: 'Choose AI agent personalities (space to select, enter to confirm)',
+          options: agents.map(a => ({
+            value: a.slug,
+            label: `${a.frontmatter.emoji || ''} ${a.frontmatter.name} — ${a.frontmatter.description?.slice(0, 60)}...`,
+          })),
+          required: false,
         });
 
         if (p.isCancel(agentSelection)) { p.cancel('Init cancelled.'); process.exit(0); }
-        if (agentSelection !== '_none') {
-          options.agent = agentSelection as string;
+        const selectedAgents = agentSelection as string[];
+        if (selectedAgents.length > 0) {
+          options.agent = selectedAgents.join(',');
         }
       }
     } catch {
@@ -867,6 +887,34 @@ async function initInteractive(
     }
   }
 
+  // Handle agent personalities (supports multiple, comma-separated)
+  const agentSlugs: string[] = [];
+  if (options.agent) {
+    const agentNames = options.agent.split(',').map((s: string) => s.trim()).filter(Boolean);
+    try {
+      const { resolveAgent, formatAgentForContext } = await import('../core/agents.js');
+      await mkdir(join(contextDir, 'agents'), { recursive: true });
+      for (const name of agentNames) {
+        try {
+          const agent = await resolveAgent(name);
+          const agentContent = formatAgentForContext(agent);
+          const agentFilename = `${agent.slug}.md`;
+          await writeFile(join(contextDir, 'agents', agentFilename), agentContent, 'utf-8');
+          const agentContextPath = `context/agents/${agentFilename}`;
+          if (!contextFiles.includes(agentContextPath)) {
+            contextFiles.push(agentContextPath);
+          }
+          agentSlugs.push(agent.slug);
+          logger.success(`Agent: ${agent.frontmatter.emoji ?? ''} ${agent.frontmatter.name}`);
+        } catch (err) {
+          logger.warn(`Could not add agent "${name}": ${err instanceof Error ? err.message : err}`);
+        }
+      }
+    } catch (err) {
+      logger.warn(`Could not load agents: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   // Build config
   const config: Record<string, unknown> = {
     version: 1,
@@ -875,6 +923,8 @@ async function initInteractive(
       ...(language ? { language: language as string } : {}),
       ...(framework ? { framework: framework as string } : {}),
     },
+    ...(agentSlugs.length === 1 ? { agent: agentSlugs[0] } : {}),
+    ...(agentSlugs.length > 1 ? { agents: agentSlugs } : {}),
     ...(selectedSkills.length > 0 ? { skills: selectedSkills } : {}),
     context: contextFiles,
     outputs: {} as Record<string, unknown>,
