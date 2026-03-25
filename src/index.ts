@@ -67,10 +67,10 @@ program
 
 program
   .command('sync')
-  .description('Keep context current — validate modules, update skills, regenerate outputs')
+  .description('Update skills, regenerate outputs, add skills/agents')
   .option('--add <skills...>', 'Add new skills')
-  .option('--agent <name>', 'Add an AI agent personality (from Agency Agents)')
-  .option('--no-ai', 'Skip AI validation')
+  .option('--agent <name>', 'Add an AI agent personality')
+  .option('--ai', 'Also validate modules against codebase using claude CLI')
   .action(async (options) => {
     const { syncCommand } = await import('./commands/sync.js');
     await syncCommand(options);

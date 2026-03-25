@@ -15,7 +15,7 @@ const execFileAsync = promisify(execFile);
 interface SyncOptions {
   add?: string[];
   agent?: string;
-  noAi?: boolean;
+  ai?: boolean;
 }
 
 // ── Step 1: Validate modules against codebase ─────────────────────────
@@ -367,8 +367,9 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
   // Step 2: Update existing skills to latest
   await updateSkills(projectRoot, rawConfig);
 
-  // Step 3: Validate modules against codebase (AI)
-  if (!options.noAi) {
+  // Step 3: Validate modules against codebase (AI — opt-in)
+  if (options.ai) {
+    logger.info('Running AI validation (using claude CLI)...');
     await validateModules(projectRoot, modulesDir, contextFiles);
   }
 
