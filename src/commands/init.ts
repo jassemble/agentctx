@@ -747,7 +747,7 @@ async function initInteractive(
       const { listAgents } = await import('../core/agents.js');
       const agents = await listAgents();
       if (agents.length > 0) {
-        const agentSelection = await p.select({
+        const agentSelection = await p.multiselect({
           message: 'Choose AI agent personalities (space to select, enter to confirm)',
           options: agents.map(a => ({
             value: a.slug,
