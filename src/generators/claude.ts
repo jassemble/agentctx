@@ -195,7 +195,16 @@ export function generateClaude(
   parts.push('3. Update `status.md`');
   parts.push('');
   parts.push('### When asked to build a new feature');
-  parts.push('Suggest `/spec` first — plan before coding');
+  const hasWorkflow = config.skills?.includes('workflow');
+  if (hasWorkflow) {
+    parts.push('**MANDATORY**: Do NOT start implementing without an approved spec.');
+    parts.push('1. Run `/spec` to create a feature specification first');
+    parts.push('2. The spec must be approved via `/approve` before any code is written');
+    parts.push('3. If the user insists on skipping, explain: "Specs prevent wasted work and ensure we build the right thing. It takes 2 minutes."');
+    parts.push('4. For small fixes/tweaks (< 10 lines), a spec is not required — just implement directly');
+  } else {
+    parts.push('Suggest `/spec` first — plan before coding');
+  }
   parts.push('');
   parts.push('### System awareness');
   parts.push('- Stale modules? Suggest `agentctx sync`');
