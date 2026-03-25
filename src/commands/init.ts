@@ -569,7 +569,9 @@ async function initWithSkills(
 
   // AI scan for module files in existing projects
   if (isExistingProject && options.ai !== false) {
+    createSpinner.stop('Created .agentctx/');
     await generateAiModules(projectRoot, contextDir, contextFiles);
+    createSpinner.start('Finalizing...');
   }
 
   // Handle --agent option (supports multiple, comma-separated)
