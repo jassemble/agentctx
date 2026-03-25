@@ -120,4 +120,12 @@ program
     await agentsCommand(action, name, options);
   });
 
+program
+  .command('impeccable <action> [name]')
+  .description('Manage Impeccable design skills (impeccable.style)')
+  .action(async (action, name) => {
+    const { impeccableCommand } = await import('./commands/impeccable.js');
+    await impeccableCommand(action, name);
+  });
+
 program.parse();

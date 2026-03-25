@@ -1,0 +1,13 @@
+name: design
+description: "Frontend design conventions — typography, color, spacing, anti-patterns"
+version: 1.0.0
+tags: [design, css, frontend, ui]
+provides: [design-conventions, anti-patterns]
+conflicts: []
+context:
+  - context/design-principles.md
+  - context/anti-patterns.md
+references:
+  - reference/typography.md
+  - reference/color.md
+  - reference/spacing-layout.md
