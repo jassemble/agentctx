@@ -13,8 +13,6 @@ program
   .option('--import', 'Auto-import existing context files (non-interactive)')
   .option('--no-interactive', 'Skip interactive prompts, use defaults')
   .option('--force', 'Overwrite existing .agentctx/ directory')
-  .option('--scan', 'Also run codebase scan after init')
-  .option('--no-ai', 'Skip AI-powered scanning')
   .option('--app <path>', 'Initialize for a specific app in a monorepo (e.g., --app apps/backend)')
   .option('--agent <name>', 'Add an AI agent personality (from Agency Agents)')
   .action(async (skills, options) => {

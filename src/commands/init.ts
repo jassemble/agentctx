@@ -1,5 +1,5 @@
 import { resolve, join, basename, extname, dirname, relative } from 'node:path';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { stringify as toYaml } from 'yaml';
 import * as p from '@clack/prompts';
@@ -225,241 +225,6 @@ Record every non-trivial architectural decision here. Newest first.
   return paths;
 }
 
-// ── AI module generation ───────────────────────────────────────────────
-
-async function generateAiModules(
-  projectRoot: string,
-  contextDir: string,
-  contextFiles: string[],
-): Promise<void> {
-  const modulesDir = join(contextDir, 'modules');
-
-  try {
-    const { spawnWithStdin } = await import('../utils/exec.js');
-    const { execFile: execFileCb } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const execFileAsync = promisify(execFileCb);
-
-    // Check claude CLI
-    try {
-      await execFileAsync('claude', ['--version'], { timeout: 5000 });
-    } catch {
-      logger.dim('  claude CLI not found — skipping AI module generation');
-      return;
-    }
-
-    const s = p.spinner();
-
-    logger.dim('  Gathering: directory tree, configs, source files...');
-
-    // Build context: directory tree + key files
-    const IGNORE = new Set(['node_modules', '.git', '.next', '__pycache__', 'dist', '.agentctx', '.turbo', '.cache', 'coverage']);
-
-    function getTree(root: string, depth = 0, maxDepth = 2): string {
-      if (depth > maxDepth) return '';
-      let tree = '';
-      try {
-        for (const entry of readdirSync(root, { withFileTypes: true })) {
-          if (IGNORE.has(entry.name)) continue;
-          const indent = '  '.repeat(depth);
-          if (entry.isDirectory()) {
-            tree += `${indent}${entry.name}/\n`;
-            tree += getTree(join(root, entry.name), depth + 1, maxDepth);
-          } else if (depth <= 1) {
-            tree += `${indent}${entry.name}\n`;
-          }
-        }
-      } catch { /* ignore */ }
-      return tree;
-    }
-
-    // Gather codebase context
-    const sections: string[] = [];
-    sections.push(`## Directory Structure\n\`\`\`\n${getTree(projectRoot)}\`\`\``);
-
-    let filesGathered = 1; // directory tree
-    for (const manifest of ['package.json', 'pyproject.toml', 'go.mod', 'Cargo.toml']) {
-      const mp = join(projectRoot, manifest);
-      if (existsSync(mp)) {
-        try { sections.push(`## ${manifest}\n\`\`\`\n${readFileSync(mp, 'utf-8')}\`\`\``); filesGathered++; } catch { /* ignore */ }
-        break;
-      }
-    }
-
-    let sourceCount = 0;
-    for (const dir of ['src', 'app', 'lib', 'pages']) {
-      const d = join(projectRoot, dir);
-      if (!existsSync(d)) continue;
-      try {
-        for (const entry of readdirSync(d, { withFileTypes: true })) {
-          if (!entry.isFile() || !/\.(ts|tsx|js|jsx|py|go|rs)$/.test(entry.name)) continue;
-          if (/\.(test|spec|config)\./i.test(entry.name)) continue;
-          const content = readFileSync(join(d, entry.name), 'utf-8').split('\n').slice(0, 100).join('\n');
-          sections.push(`## ${dir}/${entry.name}\n\`\`\`\n${content}\`\`\``);
-          sourceCount++;
-          if (sourceCount >= 3) break;
-        }
-      } catch { /* ignore */ }
-      if (sourceCount >= 3) break;
-    }
-
-    logger.dim(`  Gathered: ${filesGathered} config files, ${sourceCount} source files`);
-    s.start('Sending to Claude for analysis (30-60s)...');
-
-    // Read existing module files for reconciliation
-    const existingModules: { filename: string; content: string }[] = [];
-    if (existsSync(modulesDir)) {
-      try {
-        for (const entry of readdirSync(modulesDir, { withFileTypes: true })) {
-          if (entry.isFile() && entry.name.endsWith('.md')) {
-            const content = readFileSync(join(modulesDir, entry.name), 'utf-8');
-            existingModules.push({ filename: entry.name, content });
-          }
-        }
-      } catch { /* ignore */ }
-    }
-
-    // Also check for non-module context files that describe code (architecture.md etc.)
-    const contextMdFiles = ['architecture.md', 'testing.md', 'style.md', 'patterns.md'];
-    for (const fname of contextMdFiles) {
-      const fpath = join(contextDir, fname);
-      if (existsSync(fpath)) {
-        try {
-          const content = readFileSync(fpath, 'utf-8');
-          // Only include if it's been customized (more than just the scaffold template)
-          if (content.split('\n').filter(l => l.trim() && !l.startsWith('<!--')).length > 5) {
-            existingModules.push({ filename: fname, content });
-          }
-        } catch { /* ignore */ }
-      }
-    }
-
-    let existingSection = '';
-    if (existingModules.length > 0) {
-      existingSection = '\n\n## EXISTING MODULE FILES (review these for accuracy)\n' +
-        existingModules.map(m => `### ${m.filename}\n\`\`\`markdown\n${m.content}\n\`\`\``).join('\n\n');
-    }
-
-    const MODULES_PROMPT = `You are a codebase analyzer. You produce TWO types of output:
-
-1. **Module docs** for feature areas (auth, dashboard, api, etc.)
-2. **Architecture doc** describing the overall system
-
-Produce ONLY valid JSON with this schema:
-{
-  "modules": [
-    {
-      "filename": "auth.md",
-      "action": "create" | "update" | "keep",
-      "reason": "Brief explanation",
-      "content": "# Auth Module\\n\\n## Key Files\\n..."
-    }
-  ],
-  "architecture": {
-    "overview": "Brief description of what this project does",
-    "tech_stack": "Key technologies (e.g., Next.js 14, TypeScript, Prisma, PostgreSQL)",
-    "directory_structure": "- \`src/app/\` — Next.js app router pages\\n- \`src/lib/\` — shared utilities",
-    "module_dependencies": "- auth → database\\n- dashboard → auth",
-    "data_flow": "Request → middleware → handler → service → database → response",
-    "key_patterns": "Repository pattern, feature-based organization, dependency injection",
-    "conventions": "New features in src/features/{name}/, PascalCase components, colocated tests"
-  }
-}
-
-Module actions:
-- "create": Undocumented feature area. Content = full module doc with Key Files, Exports, Dependencies, Notes.
-- "update": Existing doc is outdated. Content = corrected version.
-- "keep": Existing doc is accurate. Content = "".
-
-Architecture rules:
-- Fill in EVERY field based on what you see in the actual code
-- Be specific — reference real directories, real patterns, real technologies
-- If you can't determine something, write "Not determined" rather than guessing
-
-Module rules:
-- Reference REAL file paths and function names
-- Group by feature area, not file type
-- Only document what actually exists
-- content uses \\n for newlines (valid JSON string)
-- Generate 2-6 module entries`;
-
-    const payload = sections.join('\n\n') + existingSection;
-    const stdout = await spawnWithStdin('claude', [
-      '--print', '--model', 'haiku', '--system-prompt', MODULES_PROMPT,
-    ], payload, 60000);
-
-    // Parse response — try new format (object with modules + architecture) first, then legacy (array)
-    const jsonObjMatch = stdout.match(/\{[\s\S]*"modules"[\s\S]*\}/);
-    const jsonArrMatch = stdout.match(/\[[\s\S]*\]/);
-
-    let moduleResults: { filename: string; action: string; reason?: string; content: string }[] = [];
-    let archData: Record<string, string> | null = null;
-
-    if (jsonObjMatch) {
-      try {
-        const parsed = JSON.parse(jsonObjMatch[0]);
-        moduleResults = parsed.modules || [];
-        archData = parsed.architecture || null;
-      } catch {
-        // Fall back to array format
-        if (jsonArrMatch) {
-          moduleResults = JSON.parse(jsonArrMatch[0]);
-        }
-      }
-    } else if (jsonArrMatch) {
-      moduleResults = JSON.parse(jsonArrMatch[0]);
-    }
-
-    if (moduleResults.length > 0 || archData) {
-      await mkdir(modulesDir, { recursive: true });
-
-      // Write architecture.md if AI generated content
-      if (archData) {
-        const archParts = ['# Architecture', ''];
-        if (archData.overview) { archParts.push('## Overview', '', archData.overview, ''); }
-        if (archData.tech_stack) { archParts.push('## Tech Stack', '', archData.tech_stack, ''); }
-        if (archData.directory_structure) { archParts.push('## Directory Structure', '', archData.directory_structure, ''); }
-        if (archData.module_dependencies) { archParts.push('## Module Dependencies', '', archData.module_dependencies, ''); }
-        if (archData.data_flow) { archParts.push('## Data Flow', '', archData.data_flow, ''); }
-        if (archData.key_patterns) { archParts.push('## Key Patterns', '', archData.key_patterns, ''); }
-        if (archData.conventions) { archParts.push('## Conventions', '', archData.conventions, ''); }
-        await writeFile(join(contextDir, 'architecture.md'), archParts.join('\n') + '\n', 'utf-8');
-        logger.dim('  Architecture.md generated from codebase');
-      }
-
-      let created = 0, updated = 0, kept = 0;
-      for (const mod of moduleResults) {
-        if (mod.action === 'keep') { kept++; continue; }
-        if (!mod.content || mod.content.trim() === '') continue;
-
-        const fname = mod.filename.endsWith('.md') ? mod.filename : `${mod.filename}.md`;
-        await writeFile(join(modulesDir, fname), mod.content, 'utf-8');
-        const rp = `context/modules/${fname}`;
-        if (!contextFiles.includes(rp)) contextFiles.push(rp);
-
-        if (mod.action === 'update') {
-          updated++;
-          logger.dim(`  Updated ${fname}: ${mod.reason || 'content changed'}`);
-        } else {
-          created++;
-        }
-      }
-
-      const summaryParts = [];
-      if (archData) summaryParts.push('architecture generated');
-      if (created > 0) summaryParts.push(`${created} modules created`);
-      if (updated > 0) summaryParts.push(`${updated} updated`);
-      if (kept > 0) summaryParts.push(`${kept} verified`);
-      s.stop(summaryParts.join(', ') || 'no changes needed');
-    } else {
-      s.stop('Could not parse AI response — skipping module generation');
-    }
-  } catch (err) {
-    s.stop('Module generation skipped');
-    logger.dim(`  ${err instanceof Error ? err.message : err}`);
-  }
-}
-
 // ── Skills-based init flow ─────────────────────────────────────────────
 
 async function initWithSkills(
@@ -568,13 +333,6 @@ async function initWithSkills(
     }
   }
 
-  // AI scan for module files in existing projects
-  if (isExistingProject && options.ai !== false) {
-    createSpinner.stop('Created .agentctx/');
-    await generateAiModules(projectRoot, contextDir, contextFiles);
-    createSpinner.start('Finalizing...');
-  }
-
   // Handle --agent option (supports multiple, comma-separated)
   const agentSlugs: string[] = [];
   if (options.agent) {
@@ -640,10 +398,14 @@ async function initWithSkills(
 
   p.outro('Done! Your context is now managed by agentctx.');
 
-  logger.dim('\nNext steps:');
-  logger.dim('  1. Review .agentctx/context/*.md and customize');
-  logger.dim('  2. Run `agentctx lint` to check quality');
-  logger.dim('  3. Run `agentctx generate --diff` to preview changes');
+  logger.dim('\nComplete setup in your AI tool:\n');
+  logger.dim('  Claude Code:');
+  logger.dim('    Run /refresh-context to generate module docs from your codebase\n');
+  logger.dim('  Cursor:');
+  logger.dim('    Ask: "Read .agentctx/context/ and update architecture.md and modules/"\n');
+  logger.dim('  Other tools:');
+  logger.dim('    Ask your AI to read .agentctx/context/ and document your codebase\n');
+  logger.dim('  Review: .agentctx/context/conventions/*.md — customize for your project');
 
   if (options.scan) {
     console.log('');
@@ -879,17 +641,6 @@ async function initInteractive(
 
   s.stop('Created .agentctx/');
 
-  // AI scan prompt for existing projects
-  if (isExistingProject && options.ai !== false) {
-    const shouldScan = await p.confirm({
-      message: 'Scan codebase to auto-generate module documentation?',
-      initialValue: true,
-    });
-    if (!p.isCancel(shouldScan) && shouldScan) {
-      await generateAiModules(projectRoot, contextDir, contextFiles);
-    }
-  }
-
   // Handle agent personalities (supports multiple, comma-separated)
   const agentSlugs: string[] = [];
   if (options.agent) {
@@ -979,10 +730,14 @@ async function initInteractive(
 
   p.outro('Done! Your context is now managed by agentctx.');
 
-  logger.dim('\nNext steps:');
-  logger.dim('  1. Review .agentctx/context/*.md and customize');
-  logger.dim('  2. Run `agentctx lint` to check quality');
-  logger.dim('  3. Run `agentctx generate --diff` to preview changes');
+  logger.dim('\nComplete setup in your AI tool:\n');
+  logger.dim('  Claude Code:');
+  logger.dim('    Run /refresh-context to generate module docs from your codebase\n');
+  logger.dim('  Cursor:');
+  logger.dim('    Ask: "Read .agentctx/context/ and update architecture.md and modules/"\n');
+  logger.dim('  Other tools:');
+  logger.dim('    Ask your AI to read .agentctx/context/ and document your codebase\n');
+  logger.dim('  Review: .agentctx/context/conventions/*.md — customize for your project');
 
   if (options.scan) {
     console.log('');
