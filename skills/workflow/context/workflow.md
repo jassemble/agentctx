@@ -4,20 +4,28 @@
 
 All feature work follows a spec-first approach. Never implement without a spec.
 
-**Rule: When a user asks to implement a feature, suggest running `/spec` first to create a specification before coding.**
+**Rule: When a user asks to implement a feature, suggest running `/brd` (multi-area) or `/spec` (single-area) first.**
 
-### Full Workflow
+### Workflows
 
+**Full feature (multi-area):**
 ```
-/spec → /approve → /implement → /review → done
-                ↘ /breakdown → /approve (each) → /build-with-team → /review → done
+/brd → /approve → /breakdown → /approve (each) → /implement or /build-with-team → /review → done
 ```
 
-1. **Create spec**: Use `/spec` to create a feature specification
-2. **Approve**: Use `/approve` to review and gate the spec for implementation
-3. **Implement** (single-team): Use `/implement` to build from an approved spec
-4. **Breakdown** (multi-team): Use `/breakdown` to split into team-specific child specs
-5. **Build with team**: Use `/build-with-team` for coordinated multi-agent implementation
+**Single-team task:**
+```
+/spec or /rfp → /approve → /implement → /review → done
+```
+
+### Steps
+
+1. **Business requirement** (optional): Use `/brd` for features that span multiple areas or need stakeholder alignment — captures the "why", user stories, success metrics
+2. **Create spec**: Use `/spec` for feature specs or `/rfp` for team-specific specs
+3. **Approve**: Use `/approve` to review and gate for implementation
+4. **Breakdown** (multi-team): Use `/breakdown` to split a BRD into team-specific child specs
+5. **Implement** (single-team): Use `/implement` to build from an approved spec
+6. **Build with team**: Use `/build-with-team` for coordinated multi-agent implementation
 6. **Review**: Use `/review` to validate against spec criteria
 7. **Update context**: Use `/refresh-context` to update module documentation
 

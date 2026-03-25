@@ -7,6 +7,7 @@ conflicts: []
 context:
   - context/workflow.md
 commands:
+  - commands/brd.md
   - commands/spec.md
   - commands/approve.md
   - commands/implement.md
@@ -39,3 +40,5 @@ scaffolds:
     dest: specs/_templates/qa-spec.md
   - src: scaffolds/devops-spec-template.md
     dest: specs/_templates/devops-spec.md
+  - src: scaffolds/brd-template.md
+    dest: specs/_templates/brd-template.md
