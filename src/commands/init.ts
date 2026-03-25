@@ -130,24 +130,57 @@ async function createLivingContext(contextDir: string): Promise<string[]> {
       content: `# Architecture
 
 ## Overview
-<!-- Describe the high-level system design -->
+<!-- What does this project do? 2-3 sentences. -->
+
+## Tech Stack
+<!-- Key technologies and why they were chosen -->
 
 ## Directory Structure
-<!-- Key directories and their purposes -->
+<!-- Key directories and their purposes. Example:
+- \`src/features/\` — Feature modules (auth, dashboard, billing)
+- \`src/lib/\` — Shared utilities and helpers
+- \`src/components/\` — Reusable UI components
+-->
+
+## Module Dependencies
+<!-- How modules relate to each other. Example:
+- auth → database (stores users/sessions)
+- dashboard → auth (requires authentication)
+- billing → auth, database (user billing records)
+-->
 
 ## Data Flow
-<!-- How data moves through the system -->
+<!-- How a request/action flows through the system. Example:
+Request → middleware (auth) → handler → service → database → response
+-->
+
+## Key Patterns
+<!-- Patterns used throughout the codebase. Example:
+- Repository pattern for data access
+- Dependency injection for services
+- Feature-based file organization
+-->
+
+## Conventions
+<!-- Where to put new files, naming rules. Example:
+- New features go in \`src/features/{name}/\`
+- Components: PascalCase files, default export
+- Services: camelCase, named exports
+- Tests: colocated as \`{name}.test.ts\`
+-->
 `,
     },
     {
       path: 'decisions.md',
       content: `# Decisions
 
-<!-- Append new decisions at the top. Format:
-## [Date] Decision Title
+Record every non-trivial architectural decision here. Newest first.
+
+<!-- Format:
+## [YYYY-MM-DD] Decision Title
 **Context:** Why this decision was needed
 **Decision:** What was chosen
-**Alternatives:** What else was considered
+**Alternatives:** What else was considered and why rejected
 **Consequences:** What this means going forward
 -->
 `,
@@ -284,49 +317,95 @@ async function generateAiModules(
         existingModules.map(m => `### ${m.filename}\n\`\`\`markdown\n${m.content}\n\`\`\``).join('\n\n');
     }
 
-    const MODULES_PROMPT = `You are a codebase analyzer and documentation reconciler. You have two jobs:
+    const MODULES_PROMPT = `You are a codebase analyzer. You produce TWO types of output:
 
-1. VALIDATE existing module docs against the actual code — are they still accurate?
-2. GENERATE new module docs for undocumented feature areas.
+1. **Module docs** for feature areas (auth, dashboard, api, etc.)
+2. **Architecture doc** describing the overall system
 
-Produce ONLY valid JSON — an array of objects:
-[
-  {
-    "filename": "auth.md",
-    "action": "create" | "update" | "keep",
-    "reason": "Brief explanation of why this action",
-    "content": "# Auth Module\\n\\n## Key Files\\n..."
+Produce ONLY valid JSON with this schema:
+{
+  "modules": [
+    {
+      "filename": "auth.md",
+      "action": "create" | "update" | "keep",
+      "reason": "Brief explanation",
+      "content": "# Auth Module\\n\\n## Key Files\\n..."
+    }
+  ],
+  "architecture": {
+    "overview": "Brief description of what this project does",
+    "tech_stack": "Key technologies (e.g., Next.js 14, TypeScript, Prisma, PostgreSQL)",
+    "directory_structure": "- \`src/app/\` — Next.js app router pages\\n- \`src/lib/\` — shared utilities",
+    "module_dependencies": "- auth → database\\n- dashboard → auth",
+    "data_flow": "Request → middleware → handler → service → database → response",
+    "key_patterns": "Repository pattern, feature-based organization, dependency injection",
+    "conventions": "New features in src/features/{name}/, PascalCase components, colocated tests"
   }
-]
+}
 
-Actions:
-- "create": No existing doc for this feature area. Content = full new module doc.
-- "update": Existing doc is outdated/inaccurate. Content = corrected version. Reason must explain what changed.
-- "keep": Existing doc is accurate. Content = empty string "". Don't waste tokens repeating it.
+Module actions:
+- "create": Undocumented feature area. Content = full module doc with Key Files, Exports, Dependencies, Notes.
+- "update": Existing doc is outdated. Content = corrected version.
+- "keep": Existing doc is accurate. Content = "".
 
-Rules:
-- Check every file path and export mentioned in existing docs — do they still exist in the code?
-- If a file was renamed/moved, update the path
-- If exports changed (renamed, removed, new ones added), update the doc
-- For new modules: document Key Files, Exports, Dependencies, Notes
-- Reference REAL file paths and function names from the code
+Architecture rules:
+- Fill in EVERY field based on what you see in the actual code
+- Be specific — reference real directories, real patterns, real technologies
+- If you can't determine something, write "Not determined" rather than guessing
+
+Module rules:
+- Reference REAL file paths and function names
 - Group by feature area, not file type
-- Only document what actually exists — don't invent
-- content field uses \\n for newlines (valid JSON string)
-- Generate 2-6 total entries (creates + updates). Skip "keep" entries to save tokens unless there are existing docs to validate.`;
+- Only document what actually exists
+- content uses \\n for newlines (valid JSON string)
+- Generate 2-6 module entries`;
 
     const payload = sections.join('\n\n') + existingSection;
     const stdout = await spawnWithStdin('claude', [
       '--print', '--model', 'haiku', '--system-prompt', MODULES_PROMPT,
     ], payload, 60000);
 
-    const jsonMatch = stdout.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const results = JSON.parse(jsonMatch[0]) as { filename: string; action: string; reason?: string; content: string }[];
+    // Parse response — try new format (object with modules + architecture) first, then legacy (array)
+    const jsonObjMatch = stdout.match(/\{[\s\S]*"modules"[\s\S]*\}/);
+    const jsonArrMatch = stdout.match(/\[[\s\S]*\]/);
+
+    let moduleResults: { filename: string; action: string; reason?: string; content: string }[] = [];
+    let archData: Record<string, string> | null = null;
+
+    if (jsonObjMatch) {
+      try {
+        const parsed = JSON.parse(jsonObjMatch[0]);
+        moduleResults = parsed.modules || [];
+        archData = parsed.architecture || null;
+      } catch {
+        // Fall back to array format
+        if (jsonArrMatch) {
+          moduleResults = JSON.parse(jsonArrMatch[0]);
+        }
+      }
+    } else if (jsonArrMatch) {
+      moduleResults = JSON.parse(jsonArrMatch[0]);
+    }
+
+    if (moduleResults.length > 0 || archData) {
       await mkdir(modulesDir, { recursive: true });
 
+      // Write architecture.md if AI generated content
+      if (archData) {
+        const archParts = ['# Architecture', ''];
+        if (archData.overview) { archParts.push('## Overview', '', archData.overview, ''); }
+        if (archData.tech_stack) { archParts.push('## Tech Stack', '', archData.tech_stack, ''); }
+        if (archData.directory_structure) { archParts.push('## Directory Structure', '', archData.directory_structure, ''); }
+        if (archData.module_dependencies) { archParts.push('## Module Dependencies', '', archData.module_dependencies, ''); }
+        if (archData.data_flow) { archParts.push('## Data Flow', '', archData.data_flow, ''); }
+        if (archData.key_patterns) { archParts.push('## Key Patterns', '', archData.key_patterns, ''); }
+        if (archData.conventions) { archParts.push('## Conventions', '', archData.conventions, ''); }
+        await writeFile(join(contextDir, 'architecture.md'), archParts.join('\n') + '\n', 'utf-8');
+        logger.dim('  Architecture.md generated from codebase');
+      }
+
       let created = 0, updated = 0, kept = 0;
-      for (const mod of results) {
+      for (const mod of moduleResults) {
         if (mod.action === 'keep') { kept++; continue; }
         if (!mod.content || mod.content.trim() === '') continue;
 
@@ -343,11 +422,12 @@ Rules:
         }
       }
 
-      const parts = [];
-      if (created > 0) parts.push(`${created} created`);
-      if (updated > 0) parts.push(`${updated} updated`);
-      if (kept > 0) parts.push(`${kept} verified`);
-      s.stop(`Modules: ${parts.join(', ') || 'no changes needed'}`);
+      const summaryParts = [];
+      if (archData) summaryParts.push('architecture generated');
+      if (created > 0) summaryParts.push(`${created} modules created`);
+      if (updated > 0) summaryParts.push(`${updated} updated`);
+      if (kept > 0) summaryParts.push(`${kept} verified`);
+      s.stop(summaryParts.join(', ') || 'no changes needed');
     } else {
       s.stop('Could not parse AI response — skipping module generation');
     }
