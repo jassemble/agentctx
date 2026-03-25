@@ -455,7 +455,8 @@ Module rules:
       s.stop('Could not parse AI response — skipping module generation');
     }
   } catch (err) {
-    logger.dim(`  Module generation skipped: ${err instanceof Error ? err.message : err}`);
+    s.stop('Module generation skipped');
+    logger.dim(`  ${err instanceof Error ? err.message : err}`);
   }
 }
 
