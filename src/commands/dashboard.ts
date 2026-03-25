@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFile, readdir, stat, rename } from 'node:fs/promises';
+import { readFile, readdir, stat, rename, writeFile, mkdir } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import { join, basename, extname, relative } from 'node:path';
 import { exec, execFile } from 'node:child_process';
@@ -498,6 +498,8 @@ function getDashboardHTML(projectName: string): string {
     .btn-primary:hover { opacity: 0.85; }
     .btn-green { background: var(--green); color: #000; border-color: var(--green); }
     .btn-green:hover { opacity: 0.85; }
+    .btn-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn-accent:hover { opacity: 0.85; }
     .btn-lg { padding: 8px 20px; font-size: 13px; }
 
     /* Table (Modules tab) */
@@ -715,8 +717,14 @@ function getDashboardHTML(projectName: string): string {
       const data = await res.json();
       const el = document.getElementById('specs-content');
 
+      // Create buttons always shown
+      let topBar = '<div style="display:flex;gap:8px;margin-bottom:16px">';
+      topBar += '<button class="btn btn-accent" onclick="showCreateForm(\\'spec\\')">+ New Spec</button>';
+      topBar += '<button class="btn" onclick="showCreateForm(\\'brd\\')">+ New BRD</button>';
+      topBar += '</div>';
+
       if (data.specs.length === 0) {
-        el.innerHTML = '<div class="empty-state"><h3>No specs yet</h3><p>Specs help you plan features before writing code. Create your first spec to get started.</p><code>mkdir specs && touch specs/INDEX.md</code></div>';
+        el.innerHTML = topBar + '<div class="empty-state"><h3>No specs yet</h3><p>Create your first spec or BRD to start planning.</p></div>';
         return;
       }
 
@@ -751,18 +759,86 @@ function getDashboardHTML(projectName: string): string {
         html += '</div>';
       }
       html += '</div>';
-      el.innerHTML = html;
+      el.innerHTML = topBar + html;
     }
+
+    function showCreateForm(type) {
+      const label = type === 'brd' ? 'Business Requirement' : 'Feature Spec';
+      document.getElementById('modal-content').innerHTML =
+        '<h2 style="margin-bottom:16px">New ' + label + '</h2>' +
+        '<div style="margin-bottom:12px"><label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px">Title</label>' +
+        '<input id="create-title" type="text" placeholder="e.g., Add user authentication" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px;outline:none" autofocus></div>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button class="btn" onclick="closeModal()">Cancel</button>' +
+        '<button class="btn btn-accent" onclick="createSpec(\\'' + type + '\\')">Create</button></div>';
+      document.getElementById('modal-overlay').classList.add('show');
+      setTimeout(() => document.getElementById('create-title')?.focus(), 100);
+    }
+
+    async function createSpec(type) {
+      const title = document.getElementById('create-title')?.value;
+      if (!title) { showToast('Title required'); return; }
+      try {
+        const res = await fetch('/api/spec/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, title }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          showToast((type === 'brd' ? 'BRD' : 'Spec') + ' #' + data.id + ' created');
+          closeModal();
+          loadSpecs();
+        } else {
+          showToast(data.error || 'Failed');
+        }
+      } catch { showToast('Failed to create'); }
+    }
+
+    let currentEditPath = null;
 
     async function viewSpec(path) {
       try {
         const res = await fetch('/api/spec?path=' + encodeURIComponent(path));
         const md = await res.text();
-        document.getElementById('modal-content').innerHTML = '<div class="md">' + marked.parse(md) + '</div>';
+        currentEditPath = path;
+        document.getElementById('modal-content').innerHTML =
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)">' +
+          '<span style="font-size:12px;color:var(--text-dim);font-family:monospace">' + esc(path) + '</span>' +
+          '<button class="btn" onclick="editSpec(\\'' + esc(path) + '\\')">Edit</button></div>' +
+          '<div class="md">' + marked.parse(md) + '</div>';
         document.getElementById('modal-overlay').classList.add('show');
       } catch {
         showToast('Could not load spec');
       }
+    }
+
+    async function editSpec(path) {
+      try {
+        const res = await fetch('/api/spec?path=' + encodeURIComponent(path));
+        const content = await res.text();
+        document.getElementById('modal-content').innerHTML =
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+          '<span style="font-size:12px;color:var(--text-dim);font-family:monospace">' + esc(path) + '</span>' +
+          '<div style="display:flex;gap:8px"><button class="btn" onclick="viewSpec(\\'' + esc(path) + '\\')">Cancel</button>' +
+          '<button class="btn btn-accent" onclick="saveSpec(\\'' + esc(path) + '\\')">Save</button></div></div>' +
+          '<textarea id="spec-editor" style="width:100%;height:60vh;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:16px;font-family:\\'SF Mono\\',monospace;font-size:13px;line-height:1.6;resize:none;outline:none;tab-size:2"></textarea>';
+        document.getElementById('spec-editor').value = content;
+        document.getElementById('spec-editor').addEventListener('keydown', (e) => {
+          if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveSpec(path); }
+          if (e.key === 'Tab') { e.preventDefault(); const s = e.target.selectionStart; e.target.value = e.target.value.substring(0,s) + '  ' + e.target.value.substring(e.target.selectionEnd); e.target.selectionStart = e.target.selectionEnd = s + 2; }
+        });
+      } catch { showToast('Could not load spec'); }
+    }
+
+    async function saveSpec(path) {
+      const content = document.getElementById('spec-editor')?.value;
+      if (!content) return;
+      try {
+        const res = await fetch('/api/file/save?path=' + encodeURIComponent(path), { method: 'POST', body: content });
+        if (res.ok) { showToast('Saved'); viewSpec(path); loadSpecs(); }
+        else { showToast('Save failed'); }
+      } catch { showToast('Save failed'); }
     }
 
     async function approveSpec(path) {
@@ -1168,6 +1244,87 @@ export async function dashboardCommand(options: DashboardOptions): Promise<void>
         } catch (err) {
           jsonResponse(res, { error: String(err) }, 500);
         }
+        return;
+      }
+
+      // API: Create spec or BRD
+      if (url.pathname === '/api/spec/create' && req.method === 'POST') {
+        const chunks: Buffer[] = [];
+        req.on('data', (c) => chunks.push(c));
+        req.on('end', async () => {
+          try {
+            const body = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
+            const { type, title } = body as { type: string; title: string };
+            if (!title) { jsonResponse(res, { error: 'Title required' }, 400); return; }
+
+            const specsDir = join(projectRoot, 'specs');
+            const templatesDir = join(specsDir, '_templates');
+            await mkdir(specsDir, { recursive: true });
+
+            // Find next ID
+            let maxId = 0;
+            try {
+              const files = await readdir(specsDir);
+              for (const f of files) {
+                const match = f.match(/(?:draft|approved|in-progress|completed)-(?:BRD-)?(\d+)/);
+                if (match) maxId = Math.max(maxId, parseInt(match[1]));
+              }
+            } catch { /* empty dir */ }
+            const nextId = String(maxId + 1).padStart(4, '0');
+
+            const kebab = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+            const isBrd = type === 'brd';
+            const prefix = isBrd ? `draft-BRD-${nextId}` : `draft-${nextId}`;
+            const filename = `${prefix}-${kebab}.md`;
+
+            // Load template
+            const templateName = isBrd ? 'brd-template.md' : 'feature-spec.md';
+            const templatePath = join(templatesDir, templateName);
+            let content: string;
+            try {
+              content = await readFile(templatePath, 'utf-8');
+              content = content.replace(/NNNN/g, nextId).replace(/\{Title\}|Feature Title/g, title).replace(/YYYY-MM-DD/g, new Date().toISOString().split('T')[0]);
+            } catch {
+              // No template — create minimal spec
+              content = `---\nid: ${nextId}\ntitle: ${title}\nstatus: draft\ncreated: ${new Date().toISOString().split('T')[0]}\n---\n\n# ${title}\n\n## Description\n\n## Acceptance Criteria\n- [ ] \n`;
+            }
+
+            await writeFile(join(specsDir, filename), content, 'utf-8');
+
+            // Update INDEX.md
+            const indexPath = join(specsDir, 'INDEX.md');
+            try {
+              let index = await readFile(indexPath, 'utf-8');
+              index += `| ${nextId} | ${title} | draft | ${new Date().toISOString().split('T')[0]} | — |\n`;
+              await writeFile(indexPath, index, 'utf-8');
+            } catch { /* no index */ }
+
+            jsonResponse(res, { ok: true, path: `specs/${filename}`, id: nextId });
+          } catch (err) {
+            jsonResponse(res, { error: String(err) }, 500);
+          }
+        });
+        return;
+      }
+
+      // API: Save file (edit spec or module)
+      if (url.pathname === '/api/file/save' && req.method === 'POST') {
+        const filePath = url.searchParams.get('path');
+        if (!filePath) { jsonResponse(res, { error: 'Missing path' }, 400); return; }
+        const resolved = join(projectRoot, filePath);
+        if (!resolved.startsWith(projectRoot)) { jsonResponse(res, { error: 'Forbidden' }, 403); return; }
+
+        const chunks: Buffer[] = [];
+        req.on('data', (c) => chunks.push(c));
+        req.on('end', async () => {
+          try {
+            const content = Buffer.concat(chunks).toString('utf-8');
+            await writeFile(resolved, content, 'utf-8');
+            jsonResponse(res, { ok: true });
+          } catch (err) {
+            jsonResponse(res, { error: String(err) }, 500);
+          }
+        });
         return;
       }
 
