@@ -118,8 +118,8 @@ describe('composeSkills', () => {
     expect(result.files).toHaveLength(2);
 
     const filenames = result.files.map((f) => f.relativePath);
-    expect(filenames).toContain('principles.md');
-    expect(filenames).toContain('style.md');
+    expect(filenames).toContain('conventions/principles.md');
+    expect(filenames).toContain('conventions/style.md');
   });
 
   it('last skill wins on duplicate filename', async () => {
@@ -131,7 +131,7 @@ describe('composeSkills', () => {
     const result = await composeSkills([skillA, skillDup]);
 
     expect(result.files).toHaveLength(1);
-    expect(result.files[0].relativePath).toBe('principles.md');
+    expect(result.files[0].relativePath).toBe('conventions/principles.md');
     expect(result.files[0].content).toContain('Overridden Principles');
 
     expect(warnSpy).toHaveBeenCalledWith(
@@ -139,5 +139,11 @@ describe('composeSkills', () => {
     );
 
     warnSpy.mockRestore();
+  });
+
+  it('returns empty referenceFiles when no references defined', async () => {
+    const skillA = loadFixtureSkill('test-skill-a');
+    const result = await composeSkills([skillA]);
+    expect(result.referenceFiles).toHaveLength(0);
   });
 });

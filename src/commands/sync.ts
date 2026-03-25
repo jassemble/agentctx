@@ -199,8 +199,17 @@ async function addSkills(
   const contextDir = join(projectRoot, '.agentctx', 'context');
   const existingContext = (config.context ?? []) as string[];
 
-  // Write context files
+  // Write convention files to context/conventions/
   for (const file of composed.files) {
+    const filePath = join(contextDir, file.relativePath);
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, file.content, 'utf-8');
+    const rp = `context/${file.relativePath}`;
+    if (!existingContext.includes(rp)) existingContext.push(rp);
+  }
+
+  // Write reference files to context/references/
+  for (const file of composed.referenceFiles) {
     const filePath = join(contextDir, file.relativePath);
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, file.content, 'utf-8');
@@ -295,12 +304,15 @@ export async function syncCommand(options: SyncOptions): Promise<void> {
       const { resolveAgent, formatAgentForContext } = await import('../core/agents.js');
       const agent = await resolveAgent(options.agent);
       const contextDir = join(agentctxDir, 'context');
-      await mkdir(contextDir, { recursive: true });
+      const agentsDir = join(contextDir, 'agents');
+      await mkdir(agentsDir, { recursive: true });
       const agentContent = formatAgentForContext(agent);
-      await writeFile(join(contextDir, 'agent.md'), agentContent, 'utf-8');
+      const agentFilename = `${agent.slug}.md`;
+      await writeFile(join(agentsDir, agentFilename), agentContent, 'utf-8');
       rawConfig.agent = agent.slug;
-      if (!contextFiles.includes('context/agent.md')) {
-        contextFiles.push('context/agent.md');
+      const agentContextPath = `context/agents/${agentFilename}`;
+      if (!contextFiles.includes(agentContextPath)) {
+        contextFiles.push(agentContextPath);
       }
       logger.success(`Agent: ${agent.frontmatter.emoji ?? ''} ${agent.frontmatter.name}`);
     } catch (err) {

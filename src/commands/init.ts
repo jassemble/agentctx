@@ -122,8 +122,11 @@ function titleToFilename(title: string): string {
 // ── Living context scaffolding ─────────────────────────────────────────
 
 async function createLivingContext(contextDir: string): Promise<string[]> {
-  // Create modules/ directory
+  // Create subdirectories
   await mkdir(join(contextDir, 'modules'), { recursive: true });
+  await mkdir(join(contextDir, 'conventions'), { recursive: true });
+  await mkdir(join(contextDir, 'agents'), { recursive: true });
+  await mkdir(join(contextDir, 'references'), { recursive: true });
 
   const livingFiles: { path: string; content: string }[] = [
     {
@@ -499,8 +502,19 @@ async function initWithSkills(
   }
 
   const contextFiles: string[] = [];
+
+  // Write convention files to context/conventions/
   for (const file of composed.files) {
     const filePath = join(contextDir, file.relativePath);
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, file.content, 'utf-8');
+    contextFiles.push(`context/${file.relativePath}`);
+  }
+
+  // Write reference files to context/references/
+  for (const file of composed.referenceFiles) {
+    const filePath = join(contextDir, file.relativePath);
+    await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, file.content, 'utf-8');
     contextFiles.push(`context/${file.relativePath}`);
   }
@@ -544,9 +558,12 @@ async function initWithSkills(
       const { resolveAgent, formatAgentForContext } = await import('../core/agents.js');
       const agent = await resolveAgent(options.agent);
       const agentContent = formatAgentForContext(agent);
-      await writeFile(join(contextDir, 'agent.md'), agentContent, 'utf-8');
-      if (!contextFiles.includes('context/agent.md')) {
-        contextFiles.push('context/agent.md');
+      const agentFilename = `${agent.slug}.md`;
+      await mkdir(join(contextDir, 'agents'), { recursive: true });
+      await writeFile(join(contextDir, 'agents', agentFilename), agentContent, 'utf-8');
+      const agentContextPath = `context/agents/${agentFilename}`;
+      if (!contextFiles.includes(agentContextPath)) {
+        contextFiles.push(agentContextPath);
       }
       agentSlug = agent.slug;
       logger.success(`Agent: ${agent.frontmatter.emoji ?? ''} ${agent.frontmatter.name}`);
@@ -771,8 +788,19 @@ async function initInteractive(
       const { resolveSkills, composeSkills } = await import('../core/skills.js');
       const resolved = await resolveSkills(selectedSkills);
       const composed = await composeSkills(resolved);
+
+      // Write convention files to context/conventions/
       for (const file of composed.files) {
         const filePath = join(contextDir, file.relativePath);
+        await mkdir(dirname(filePath), { recursive: true });
+        await writeFile(filePath, file.content, 'utf-8');
+        contextFiles.push(`context/${file.relativePath}`);
+      }
+
+      // Write reference files to context/references/
+      for (const file of composed.referenceFiles) {
+        const filePath = join(contextDir, file.relativePath);
+        await mkdir(dirname(filePath), { recursive: true });
         await writeFile(filePath, file.content, 'utf-8');
         contextFiles.push(`context/${file.relativePath}`);
       }

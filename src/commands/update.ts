@@ -64,10 +64,11 @@ export async function updateCommand(options: { dryRun?: boolean }): Promise<void
 
     const changes: FileChange[] = [];
 
-    // Compare context files
+    // Compare context files (now stored in conventions/)
     for (const contextPath of resolved.yaml.context) {
       const builtinFullPath = join(resolved.dir, contextPath);
-      const installedPath = join(projectRoot, '.agentctx', 'context', basename(contextPath));
+      const filename = basename(contextPath);
+      const installedPath = join(projectRoot, '.agentctx', 'context', 'conventions', filename);
 
       if (!existsSync(builtinFullPath)) continue;
 
@@ -83,7 +84,7 @@ export async function updateCommand(options: { dryRun?: boolean }): Promise<void
 
       const changed = builtinContent !== installedContent;
       changes.push({
-        relativePath: `context/${basename(contextPath)}`,
+        relativePath: `context/conventions/${filename}`,
         type: 'context',
         oldLines: installedLines,
         newLines: builtinLines,
@@ -190,7 +191,7 @@ export async function updateCommand(options: { dryRun?: boolean }): Promise<void
         const contextEntry = resolved.yaml.context.find(c => basename(c) === filename);
         if (!contextEntry) continue;
         srcPath = join(resolved.dir, contextEntry);
-        destPath = join(projectRoot, '.agentctx', 'context', filename);
+        destPath = join(projectRoot, '.agentctx', 'context', 'conventions', filename);
       } else {
         const filename = basename(change.relativePath);
         // Find the matching command entry

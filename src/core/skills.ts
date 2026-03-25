@@ -177,25 +177,59 @@ export async function composeSkills(
   skills: ResolvedSkill[],
 ): Promise<{
   files: Array<{ relativePath: string; content: string }>;
+  referenceFiles: Array<{ relativePath: string; content: string }>;
   commands: Array<{ relativePath: string; content: string }>;
   scaffolds: Array<{ dest: string; content: string }>;
   skillNames: string[];
 }> {
-  const fileMap = new Map<string, { relativePath: string; content: string }>();
+  const conventionMap = new Map<string, { relativePath: string; content: string }>();
+  const referenceMap = new Map<string, { relativePath: string; content: string }>();
   const commands: Array<{ relativePath: string; content: string }> = [];
   const scaffolds: Array<{ dest: string; content: string }> = [];
 
   for (const skill of skills) {
-    const modules = await loadSkillModules(skill);
-    for (const mod of modules) {
-      if (fileMap.has(mod.filename)) {
-        console.warn(
-          `Skill "${mod.source}" overrides file "${mod.filename}" from a previous skill`,
+    // Load context files (conventions)
+    for (const relativePath of skill.yaml.context) {
+      const fullPath = resolve(skill.dir, relativePath);
+      const filename = basename(relativePath);
+
+      let content: string;
+      try {
+        content = await readFile(fullPath, 'utf-8');
+      } catch {
+        throw new Error(
+          `Skill context file not found: ${relativePath} in skill "${skill.yaml.name}" (resolved to ${fullPath})`,
         );
       }
-      fileMap.set(mod.filename, {
-        relativePath: mod.filename,
-        content: mod.content,
+
+      if (conventionMap.has(filename)) {
+        console.warn(
+          `Skill "${skill.yaml.name}" overrides file "${filename}" from a previous skill`,
+        );
+      }
+      conventionMap.set(filename, {
+        relativePath: `conventions/${filename}`,
+        content,
+      });
+    }
+
+    // Load reference files
+    for (const relativePath of skill.yaml.references) {
+      const fullPath = resolve(skill.dir, relativePath);
+      const filename = basename(relativePath);
+
+      let content: string;
+      try {
+        content = await readFile(fullPath, 'utf-8');
+      } catch {
+        throw new Error(
+          `Skill reference file not found: ${relativePath} in skill "${skill.yaml.name}" (resolved to ${fullPath})`,
+        );
+      }
+
+      referenceMap.set(filename, {
+        relativePath: `references/${filename}`,
+        content: `<!-- Reference material from ${skill.yaml.name} -->\n${content}`,
       });
     }
 
@@ -230,7 +264,8 @@ export async function composeSkills(
   }
 
   return {
-    files: Array.from(fileMap.values()),
+    files: Array.from(conventionMap.values()),
+    referenceFiles: Array.from(referenceMap.values()),
     commands,
     scaffolds,
     skillNames: skills.map((s) => s.yaml.name),
