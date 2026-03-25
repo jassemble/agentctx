@@ -133,3 +133,11 @@ For rendering user-generated content or Markdown, use `@tailwindcss/typography`:
 - `prose-invert` flips colors for dark mode.
 - Override specific elements: `prose-headings:font-bold prose-a:text-blue-600`.
 - `max-w-none` removes the default max-width if your layout already constrains width.
+
+## Don't
+
+- Don't extract components just to reduce class count — only extract for reuse or readability
+- Don't mix Tailwind with inline styles or CSS modules in the same component
+- Don't create a `styles.css` with custom classes when Tailwind utilities cover the case
+- Don't use fixed widths (`w-[342px]`) — use responsive utilities and max-width constraints
+- Don't apply dark mode classes without testing — `dark:bg-gray-900` on nested elements can cause issues

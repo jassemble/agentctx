@@ -96,6 +96,7 @@ describe('loadSkillModules', () => {
         provides: [],
         conflicts: [],
         context: ['context/missing.md'],
+        references: [],
       },
       dir: join(FIXTURES_SKILLS, 'test-skill-a'),
     };

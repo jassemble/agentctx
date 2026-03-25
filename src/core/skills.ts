@@ -16,6 +16,7 @@ export const SkillYamlSchema = z.object({
   provides: z.array(z.string()).default([]),
   conflicts: z.array(z.string()).default([]),
   context: z.array(z.string()),
+  references: z.array(z.string()).default([]),  // paths to reference/*.md files
   commands: z.array(z.string()).default([]),
   scaffolds: z.array(z.object({
     src: z.string(),
@@ -142,6 +143,29 @@ export async function loadSkillModules(skill: ResolvedSkill): Promise<SkillModul
       filename,
       title: extractTitle(content, filename),
       content,
+      source: skill.yaml.name,
+    });
+  }
+
+  // Load reference files (included in context but marked as reference material)
+  for (const relativePath of skill.yaml.references) {
+    const fullPath = resolve(skill.dir, relativePath);
+    const filename = basename(relativePath);
+
+    let content: string;
+    try {
+      content = await readFile(fullPath, 'utf-8');
+    } catch {
+      throw new Error(
+        `Skill reference file not found: ${relativePath} in skill "${skill.yaml.name}" (resolved to ${fullPath})`,
+      );
+    }
+
+    const title = extractTitle(content, filename);
+    modules.push({
+      filename,
+      title: `[Reference] ${title}`,
+      content: `<!-- Reference material from ${skill.yaml.name} -->\n${content}`,
       source: skill.yaml.name,
     });
   }

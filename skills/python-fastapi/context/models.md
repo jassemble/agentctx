@@ -142,3 +142,11 @@ user.model_dump_json()                     # JSON string
 ```
 
 For database updates with partial data, use `model_dump(exclude_unset=True)` — this only includes fields the client explicitly sent, not fields defaulting to `None`.
+
+## Don't
+
+- Don't use the same Pydantic model for create, read, and update — separate schemas prevent over-posting
+- Don't put database session management in endpoint functions — use dependency injection
+- Don't use `Optional` without a default value — `Optional[str] = None` is explicit, `Optional[str]` is ambiguous
+- Don't mutate Pydantic models after creation — use `model_copy(update={...})` instead
+- Don't skip field validation — use `@field_validator` for business rules, not just type checking

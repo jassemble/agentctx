@@ -10,7 +10,14 @@ Implement a feature from an approved spec.
      - If `completed` — tell the user it's already done. Ask if they want to re-implement.
      - Only `approved` status should proceed without warning.
 
-2. Check if this spec affects multiple areas (backend + frontend, API + mobile, etc.):
+2. **Mandatory context loading** — before writing any code:
+   - Read `CLAUDE.md` fully — it contains conventions, anti-patterns, and the module index
+   - Read ALL module files listed in the Module Index that relate to this spec's affected areas
+   - Read `.agentctx/context/architecture.md` for directory conventions
+   - Read `.agentctx/context/decisions.md` for prior decisions
+   - This step is NOT optional — skipping it leads to duplicate code and convention violations
+
+3. Check if this spec affects multiple areas (backend + frontend, API + mobile, etc.):
    - Look at the "Affected Files" section and child specs
    - If it spans multiple areas, ask the user:
      "This spec affects multiple areas. How would you like to proceed?
@@ -19,32 +26,32 @@ Implement a feature from an approved spec.
       3. Use `/build-with-team` for parallel implementation with agent teams"
    - If the user chooses 2 or 3, hand off to that command and stop
 
-3. Read the project context:
+4. Read the project context:
    - Read `CLAUDE.md` for conventions and patterns
    - Read relevant module files in `.agentctx/context/modules/` for existing code
    - Read `.agentctx/context/architecture.md` for structure conventions
    - If the spec has a `parent_spec` field, read the parent spec for full context
 
-4. Create a feature branch (if not already on one):
+5. Create a feature branch (if not already on one):
    ```bash
    git checkout -b feat/{NNNN}-{name}
    ```
 
-5. Transition spec status to `in-progress`:
+6. Transition spec status to `in-progress`:
    - Rename the spec file from `approved-{NNNN}-{name}.md` to `in-progress-{NNNN}-{name}.md`
      - Use `git mv` if the file is tracked, otherwise regular mv
    - Update the `status` field in the spec frontmatter to `in-progress`
    - Update `specs/INDEX.md` status column to `in-progress`
 
-6. Convert acceptance criteria into a task list and plan the implementation order
+7. Convert acceptance criteria into a task list and plan the implementation order
 
-7. Implement each task:
+8. Implement each task:
    - Follow conventions from CLAUDE.md
    - Reuse existing functions from modules/ documentation
    - Put new files in the correct location per architecture.md
    - After each significant subtask, consider a mini-checkpoint
 
-8. After implementation, update module files:
+9. After implementation, update module files:
    - Create or update `.agentctx/context/modules/{feature}.md` with:
      - Key files created/modified
      - Exported functions/components
@@ -53,20 +60,20 @@ Implement a feature from an approved spec.
    - Update `.agentctx/context/status.md` with the completed work
    - Log any architectural decisions in `.agentctx/context/decisions.md`
 
-9. Transition spec status to `completed`:
-   - Rename the spec file from `in-progress-{NNNN}-{name}.md` to `completed-{NNNN}-{name}.md`
-     - Use `git mv` if the file is tracked, otherwise regular mv
-   - Update the `status` field in the spec frontmatter to `completed`
-   - Update `specs/INDEX.md` status column to `completed`
+10. Transition spec status to `completed`:
+    - Rename the spec file from `in-progress-{NNNN}-{name}.md` to `completed-{NNNN}-{name}.md`
+      - Use `git mv` if the file is tracked, otherwise regular mv
+    - Update the `status` field in the spec frontmatter to `completed`
+    - Update `specs/INDEX.md` status column to `completed`
 
-10. Auto-checkpoint:
-   ```bash
-   git add -A
-   git commit -m "checkpoint: spec-{NNNN} implementation complete"
-   git tag cp-{NNNN}-done
-   ```
+11. Auto-checkpoint:
+    ```bash
+    git add -A
+    git commit -m "checkpoint: spec-{NNNN} implementation complete"
+    git tag cp-{NNNN}-done
+    ```
 
-11. Print a summary:
+12. Print a summary:
     ```
     Implementation complete: {title}
     Spec: specs/completed-{NNNN}-{name}.md

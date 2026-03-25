@@ -132,3 +132,11 @@ try {
 const existing = await findUser(id);
 const user = existing ?? await createUser(id);
 ```
+
+## Don't
+
+- Don't catch errors and return `null` silently — either handle the error or let it propagate
+- Don't use `try/catch` around every function call — catch at system boundaries
+- Don't throw plain strings — always throw Error objects or typed error classes
+- Don't use `console.error` as error handling — log AND handle (retry, fallback, or propagate)
+- Don't ignore the error parameter in catch blocks — at minimum log it for debugging

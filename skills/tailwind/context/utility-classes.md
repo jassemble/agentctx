@@ -101,3 +101,11 @@ export function cn(...inputs: ClassValue[]) {
 ```
 
 `tailwind-merge` resolves conflicting utilities — `cn("px-4", "px-6")` → `"px-6"`, not `"px-4 px-6"`.
+
+## Don't
+
+- Don't use `@apply` to extract single-use class combinations — only for truly reusable patterns
+- Don't override Tailwind's spacing scale with arbitrary values (`mt-[13px]`) when a scale value works (`mt-3`)
+- Don't use `!important` modifier unless overriding third-party styles — fix the specificity instead
+- Don't create custom utility classes when Tailwind already has them — check the docs first
+- Don't use `text-gray-500` on colored backgrounds without checking contrast ratios

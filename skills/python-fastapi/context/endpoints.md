@@ -138,3 +138,11 @@ app.add_middleware(
 ```
 
 Add CORS middleware **before** other middleware — middleware executes in reverse order of registration.
+
+## Don't
+
+- Don't use `def` for endpoints that do I/O — use `async def` with async database/HTTP clients
+- Don't put business logic directly in endpoint functions — extract to service functions
+- Don't return raw database models from endpoints — use response schemas to control what's exposed
+- Don't use `*` imports from models/schemas — import explicitly
+- Don't forget to add `response_model` — it validates output and generates OpenAPI docs

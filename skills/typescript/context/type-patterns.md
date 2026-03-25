@@ -130,3 +130,11 @@ interface Cache {
 ```
 
 Enable `noUncheckedIndexedAccess` in tsconfig to force handling of `undefined` from index signatures — prevents a common class of runtime errors.
+
+## Don't
+
+- Don't use `any` — use `unknown` with type narrowing, or define a proper type
+- Don't use `as` type assertions to silence errors — fix the actual type issue
+- Don't create interfaces for function parameters used only once — use inline types
+- Don't use `enum` for simple string unions — use `type Status = 'active' | 'inactive'` instead
+- Don't export every type — only export types that are part of the public API

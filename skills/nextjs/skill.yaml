@@ -9,3 +9,5 @@ context:
   - context/routing.md
   - context/data-fetching.md
   - context/project-structure.md
+references:
+  - reference/app-router-patterns.md

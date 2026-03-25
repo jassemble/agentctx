@@ -105,3 +105,11 @@ module.exports = nextConfig;
 - `images.remotePatterns` — required for `<Image>` to optimize external images.
 - `typedRoutes` — enables compile-time checking of `<Link href>` values.
 - Always configure `redirects` for moved pages rather than handling in middleware.
+
+## Don't
+
+- Don't put shared components in `src/app/` — use `src/components/` or `src/lib/`
+- Don't create barrel files (`index.ts`) that re-export everything — it breaks tree shaking
+- Don't store environment variables without the `NEXT_PUBLIC_` prefix if needed client-side
+- Don't import server-only code in client components — use `server-only` package to catch mistakes
+- Don't put business logic in route handlers — extract to service functions in `src/lib/`

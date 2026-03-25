@@ -126,3 +126,11 @@ type Role = typeof roles[number];  // same union, plus iterable array
 ```
 
 Numeric enums are almost never needed. If you need numeric codes, use a `Record<string, number>` with `as const`.
+
+## Don't
+
+- Don't disable strict mode or `noUncheckedIndexedAccess` — fix the type errors instead
+- Don't use `require()` in ES module projects — use `import`
+- Don't create utility files with unrelated functions (`utils.ts` with 50 exports) — split by domain
+- Don't use default exports for non-component files — named exports are easier to refactor
+- Don't put types in a global `types.ts` — colocate types with the code that uses them

@@ -119,3 +119,11 @@ export async function generateStaticParams() {
 
 - Pages with `generateStaticParams` are pre-rendered at build time.
 - Combine with `dynamicParams = false` to return 404 for unknown params instead of on-demand rendering.
+
+## Don't
+
+- Don't wrap everything in Suspense — only async components that fetch data need it
+- Don't use `useState` + `useEffect` for data fetching — use Server Components or Server Actions
+- Don't call `revalidatePath('/')` to revalidate everything — be specific about what to revalidate
+- Don't create separate API route handlers just to fetch from a database — Server Components can query directly
+- Don't cache user-specific data with `unstable_cache` — it's shared across all users by default

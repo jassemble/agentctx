@@ -166,3 +166,11 @@ async def create_user(db: AsyncSession, data: UserCreate) -> User:
     await db.refresh(user)
     return user
 ```
+
+## Don't
+
+- Don't put all routes in `main.py` — use `APIRouter` per domain and `include_router` in main
+- Don't hardcode configuration — use pydantic-settings with `.env` files
+- Don't create circular imports between routers and models — use dependency injection
+- Don't mix sync and async code — if using async, go fully async (database, HTTP, file I/O)
+- Don't skip alembic migrations — never modify database schema manually in production

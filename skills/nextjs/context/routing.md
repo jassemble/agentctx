@@ -88,3 +88,11 @@ export const config = {
 - Use `matcher` to limit which routes trigger middleware — never run on static assets.
 - Middleware cannot read/write to a database directly — use it for auth checks, redirects, headers, and geolocation.
 - Keep it lightweight: it runs on every matched request.
+
+## Don't
+
+- Don't create API routes for data that Server Components can fetch directly — use Server Components
+- Don't put `'use client'` at the top of every component — only components that use hooks, event handlers, or browser APIs need it
+- Don't create a layout.tsx in every segment — only where you need shared UI that persists across navigations
+- Don't use `router.push()` for simple navigation — use `<Link>` for prefetching and accessibility
+- Don't fetch data in layout.tsx and pass it down as props — each page/component should fetch its own data
