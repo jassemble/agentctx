@@ -26,22 +26,51 @@ export interface AgentDefinition {
   filePath: string;     // Where it came from
 }
 
+const AGENCY_AGENTS_REPO = 'https://raw.githubusercontent.com/msitarzewski/agency-agents/main';
+const AGENCY_AGENTS_CATEGORIES = ['engineering', 'design', 'marketing', 'product', 'testing', 'support', 'sales', 'specialized', 'game-dev', 'academic', 'spatial-computing', 'project-management'];
+
 /**
  * Find the directory containing bundled agent .md files.
- * Checks two locations:
- *   1. Bundled: {package-root}/agents/
- *   2. Local dev: agency-agents sibling directory
  */
 export function getAgentSourceDir(): string {
-  // In dev (tsx): src/core/agents.ts -> ../../agents
   const devPath = join(dirname(__filename), '..', '..', 'agents');
   if (existsSync(devPath)) return devPath;
 
-  // After build (tsup): dist/index.js -> ../agents
   const distPath = join(dirname(__filename), '..', 'agents');
   if (existsSync(distPath)) return distPath;
 
-  return devPath; // fallback — will fail later with clear error
+  return devPath;
+}
+
+/**
+ * Find the full agency-agents repo if it's cloned locally (sibling directory).
+ */
+function getFullAgencyDir(): string | null {
+  // Check common locations
+  const candidates = [
+    join(dirname(__filename), '..', '..', '..', 'agency-agents'),  // sibling in dev
+    join(dirname(__filename), '..', '..', 'agency-agents'),        // sibling after build
+    join(process.cwd(), '..', 'agency-agents'),                     // sibling of project
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(candidate) && existsSync(join(candidate, 'engineering'))) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * Fetch a single agent file from GitHub.
+ */
+async function fetchAgentFromGithub(category: string, filename: string): Promise<string | null> {
+  const url = `${AGENCY_AGENTS_REPO}/${category}/${filename}`;
+  try {
+    const response = await fetch(url);
+    if (response.ok) return await response.text();
+  } catch { /* network error */ }
+  return null;
 }
 
 /**
@@ -89,7 +118,7 @@ export async function parseAgentFile(filePath: string): Promise<AgentDefinition>
 }
 
 /**
- * Scan the agent source directory and return all parsed agents, sorted by category then slug.
+ * Scan bundled agents. Returns the curated set shipped with agentctx.
  */
 export async function listAgents(): Promise<AgentDefinition[]> {
   const agentsDir = getAgentSourceDir();
@@ -108,7 +137,6 @@ export async function listAgents(): Promise<AgentDefinition[]> {
     }
   }
 
-  // Sort by category, then by slug
   agents.sort((a, b) => {
     if (a.category !== b.category) return a.category.localeCompare(b.category);
     return a.slug.localeCompare(b.slug);
@@ -118,38 +146,112 @@ export async function listAgents(): Promise<AgentDefinition[]> {
 }
 
 /**
- * Find an agent by slug. Tries exact match first, then partial match.
- * Throws a clear error with suggestions if not found.
+ * List ALL agents — scans the full agency-agents repo if cloned locally.
+ */
+export async function listAllAgents(): Promise<AgentDefinition[]> {
+  const fullDir = getFullAgencyDir();
+  if (!fullDir) return listAgents(); // fallback to bundled
+
+  const agents: AgentDefinition[] = [];
+
+  for (const category of AGENCY_AGENTS_CATEGORIES) {
+    const catDir = join(fullDir, category);
+    if (!existsSync(catDir)) continue;
+
+    try {
+      const entries = await readdir(catDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+        try {
+          const agent = await parseAgentFile(join(catDir, entry.name));
+          agents.push(agent);
+        } catch { /* skip */ }
+      }
+    } catch { /* skip */ }
+  }
+
+  agents.sort((a, b) => {
+    if (a.category !== b.category) return a.category.localeCompare(b.category);
+    return a.slug.localeCompare(b.slug);
+  });
+
+  return agents;
+}
+
+/**
+ * Find an agent by slug. Search order:
+ *   1. Bundled agents
+ *   2. Full agency-agents repo (if cloned locally)
+ *   3. Fetch from GitHub (on demand)
  */
 export async function resolveAgent(name: string): Promise<AgentDefinition> {
-  const agents = await listAgents();
+  // 1. Search bundled agents
+  const bundled = await listAgents();
+  const fromBundled = findAgent(bundled, name);
+  if (fromBundled) return fromBundled;
 
-  // 1. Exact slug match
-  const exact = agents.find(a => a.slug === name);
-  if (exact) return exact;
+  // 2. Search full repo if available locally
+  const fullDir = getFullAgencyDir();
+  if (fullDir) {
+    const allAgents = await listAllAgents();
+    const fromFull = findAgent(allAgents, name);
+    if (fromFull) return fromFull;
+  }
 
-  // 2. Partial match (slug contains the search term)
-  const partials = agents.filter(a => a.slug.includes(name));
-  if (partials.length === 1) return partials[0];
+  // 3. Try fetching from GitHub
+  const fetched = await fetchAgentByName(name);
+  if (fetched) return fetched;
 
-  // 3. Try matching against the full filename pattern (category-slug)
-  const fullMatch = agents.find(a => `${a.category}-${a.slug}` === name);
-  if (fullMatch) return fullMatch;
-
-  // Build helpful error message
-  const suggestions = partials.length > 0
-    ? partials.map(a => a.slug)
-    : agents
-        .map(a => ({ slug: a.slug, distance: levenshteinDistance(name, a.slug) }))
-        .sort((a, b) => a.distance - b.distance)
-        .slice(0, 3)
-        .map(a => a.slug);
+  // Build helpful error
+  const allKnown = fullDir ? await listAllAgents() : bundled;
+  const suggestions = allKnown
+    .map(a => ({ slug: a.slug, distance: levenshteinDistance(name, a.slug) }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 5)
+    .map(a => a.slug);
 
   const hint = suggestions.length > 0
     ? `\n\nDid you mean one of these?\n${suggestions.map(s => `  - ${s}`).join('\n')}`
-    : `\n\nRun \`agentctx agents list\` to see available agents.`;
+    : '';
 
-  throw new Error(`Agent "${name}" not found.${hint}`);
+  throw new Error(`Agent "${name}" not found.${hint}\n\nRun \`agentctx agents list --all\` to see all available agents.`);
+}
+
+function findAgent(agents: AgentDefinition[], name: string): AgentDefinition | null {
+  // Exact slug match
+  const exact = agents.find(a => a.slug === name);
+  if (exact) return exact;
+
+  // Full filename pattern (category-slug)
+  const fullMatch = agents.find(a => `${a.category}-${a.slug}` === name);
+  if (fullMatch) return fullMatch;
+
+  // Single partial match
+  const partials = agents.filter(a => a.slug.includes(name));
+  if (partials.length === 1) return partials[0];
+
+  return null;
+}
+
+/**
+ * Try to fetch a specific agent from GitHub by trying common category prefixes.
+ */
+async function fetchAgentByName(name: string): Promise<AgentDefinition | null> {
+  for (const category of AGENCY_AGENTS_CATEGORIES) {
+    const filename = `${category}-${name}.md`;
+    const content = await fetchAgentFromGithub(category, filename);
+    if (content) {
+      // Write to a temp location and parse
+      const { tmpdir } = await import('node:os');
+      const { writeFile: writeTmp } = await import('node:fs/promises');
+      const tmpPath = join(tmpdir(), `agentctx-agent-${filename}`);
+      await writeTmp(tmpPath, content, 'utf-8');
+      try {
+        return await parseAgentFile(tmpPath);
+      } catch { /* parse failed */ }
+    }
+  }
+  return null;
 }
 
 /**

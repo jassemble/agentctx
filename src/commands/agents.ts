@@ -2,14 +2,14 @@ import { join, dirname } from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { stringify as toYaml, parse as parseYaml } from 'yaml';
 import { logger } from '../utils/logger.js';
-import { listAgents, resolveAgent, formatAgentForContext } from '../core/agents.js';
+import { listAgents, listAllAgents, resolveAgent, formatAgentForContext } from '../core/agents.js';
 import { findConfigPath } from '../core/config.js';
 import type { AgentDefinition } from '../core/agents.js';
 
-export async function agentsCommand(action: string, name?: string): Promise<void> {
+export async function agentsCommand(action: string, name?: string, options?: { all?: boolean }): Promise<void> {
   switch (action) {
     case 'list':
-      await listAction();
+      await listAction(options?.all);
       break;
     case 'info':
       if (!name) {
@@ -32,8 +32,8 @@ export async function agentsCommand(action: string, name?: string): Promise<void
   }
 }
 
-async function listAction(): Promise<void> {
-  const agents = await listAgents();
+async function listAction(all: boolean = false): Promise<void> {
+  const agents = all ? await listAllAgents() : await listAgents();
 
   if (agents.length === 0) {
     logger.warn('No agents found. Agent files may not be installed.');
@@ -67,6 +67,11 @@ async function listAction(): Promise<void> {
   }
 
   console.log('  Use: agentctx init nextjs --agent frontend-developer');
+  if (!all) {
+    console.log('');
+    logger.dim('  Showing bundled agents. Run `agentctx agents list --all` for all 144+ from Agency Agents.');
+    logger.dim('  Any agent can be used on demand — agentctx will fetch it automatically.');
+  }
   console.log('   Or: agentctx agents add frontend-developer');
   console.log('');
 }
