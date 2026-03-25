@@ -618,6 +618,10 @@ async function initInteractive(
       { value: 'claude', label: 'CLAUDE.md (Claude Code)', hint: 'recommended' },
       { value: 'cursorrules', label: '.cursorrules (Cursor IDE)' },
       { value: 'copilot', label: '.github/copilot-instructions.md (GitHub Copilot)' },
+      { value: 'gemini', label: 'GEMINI.md (Gemini CLI)' },
+      { value: 'codex', label: 'AGENTS.md (Codex CLI)' },
+      { value: 'windsurf', label: '.windsurfrules (Windsurf)' },
+      { value: 'aider', label: 'CONVENTIONS.md (Aider)' },
     ],
     initialValues: ['claude', 'cursorrules'],
     required: true,
@@ -743,6 +747,18 @@ async function initInteractive(
   }
   if (targets.includes('copilot')) {
     outputs.copilot = { enabled: true, path: '.github/copilot-instructions.md', max_tokens: 4000 };
+  }
+  if (targets.includes('gemini')) {
+    outputs.gemini = { enabled: true, path: 'GEMINI.md', max_tokens: 8000 };
+  }
+  if (targets.includes('codex')) {
+    outputs.codex = { enabled: true, path: 'AGENTS.md', max_tokens: 8000 };
+  }
+  if (targets.includes('windsurf')) {
+    outputs.windsurf = { enabled: true, path: '.windsurfrules', max_tokens: 4000 };
+  }
+  if (targets.includes('aider')) {
+    outputs.aider = { enabled: true, path: 'CONVENTIONS.md', max_tokens: 4000 };
   }
 
   // If this is an app-level init, add inheritance

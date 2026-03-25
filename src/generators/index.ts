@@ -2,6 +2,7 @@ import type { ContextModule } from '../core/context.js';
 import type { AgentCtxConfig } from '../core/config.js';
 import { generateClaude } from './claude.js';
 import { generateCursorrules } from './cursorrules.js';
+import { generateCopilot, generateAider, generateWindsurf, generateCodex, generateGemini } from './providers.js';
 import { estimateTokens } from '../utils/tokens.js';
 
 export interface GeneratorResult {
@@ -20,6 +21,11 @@ type GeneratorFn = (
 const generators: Record<string, GeneratorFn> = {
   claude: generateClaude,
   cursorrules: generateCursorrules,
+  copilot: generateCopilot,
+  aider: generateAider,
+  windsurf: generateWindsurf,
+  codex: generateCodex,
+  gemini: generateGemini,
 };
 
 export async function runGenerators(
