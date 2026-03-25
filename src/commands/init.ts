@@ -12,6 +12,7 @@ interface InitOptions {
   interactive?: boolean;
   force?: boolean;
   scan?: boolean;
+  ai?: boolean;
   app?: string;
   agent?: string;
 }
@@ -532,7 +533,7 @@ async function initWithSkills(
   }
 
   // AI scan for module files in existing projects
-  if (isExistingProject) {
+  if (isExistingProject && options.ai !== false) {
     await generateAiModules(projectRoot, contextDir, contextFiles);
   }
 
@@ -821,7 +822,7 @@ async function initInteractive(
   s.stop('Created .agentctx/');
 
   // AI scan prompt for existing projects
-  if (isExistingProject) {
+  if (isExistingProject && options.ai !== false) {
     const shouldScan = await p.confirm({
       message: 'Scan codebase to auto-generate module documentation?',
       initialValue: true,
