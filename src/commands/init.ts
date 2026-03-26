@@ -608,9 +608,10 @@ async function initInteractive(
       // Write .claude/commands/ from skills
       if (composed.commands.length > 0) {
         const cmdDir = join(projectRoot, '.claude', 'commands');
-        await mkdir(cmdDir, { recursive: true });
         for (const cmd of composed.commands) {
-          await writeFile(join(cmdDir, cmd.relativePath), cmd.content, 'utf-8');
+          const cmdPath = join(cmdDir, cmd.relativePath);
+          await mkdir(dirname(cmdPath), { recursive: true });
+          await writeFile(cmdPath, cmd.content, 'utf-8');
         }
         logger.success(`.claude/commands/ — ${composed.commands.length} workflow commands`);
       }
@@ -780,6 +781,7 @@ async function generateOutputs(projectRoot: string, agentctxDir: string): Promis
 
     for (const result of results) {
       const outPath = resolve(projectRoot, result.path);
+      await mkdir(dirname(outPath), { recursive: true });
       await writeFile(outPath, result.content, 'utf-8');
     }
 
