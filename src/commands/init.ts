@@ -890,8 +890,8 @@ export async function initCommand(skills: string[], options: InitOptions): Promi
   if (existsSync(agentctxDir) && !options.force) {
     logger.error('.agentctx/ already exists.');
     logger.dim('');
-    logger.dim('  To update your context:     agentctx sync');
-    logger.dim('  To add a skill:             agentctx sync --add prisma');
+    logger.dim('  To add a skill or agent:    agentctx add prisma');
+    logger.dim('  To regenerate outputs:      agentctx generate');
     logger.dim('  To start fresh:             agentctx init --force');
     logger.dim('');
     process.exit(1);

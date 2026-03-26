@@ -280,7 +280,7 @@ async function getHealth(projectRoot: string): Promise<HealthResult> {
       score += 2;
     } else if (missing.length > 0) {
       checks.push({ label: 'Skills match stack', pass: false, detail: `Missing: ${missing.join(', ')}` });
-      recommendations.push(`Run: agentctx sync --add ${missing.join(' ')}`);
+      recommendations.push(`Run: agentctx add ${missing.join(' ')}`);
     } else {
       score += 1;
       checks.push({ label: 'Skills configured', pass: true, detail: 'No specific suggestions' });
@@ -313,7 +313,7 @@ async function getHealth(projectRoot: string): Promise<HealthResult> {
 
   if (staleModules.length > 0) {
     checks.push({ label: `${staleModules.length} module(s) stale`, pass: false, detail: staleModules.join(', ') });
-    recommendations.push('Run: agentctx sync');
+    recommendations.push('Run: agentctx generate');
   } else if (moduleCount > 0) {
     checks.push({ label: 'All modules fresh', pass: true });
     score += 1;

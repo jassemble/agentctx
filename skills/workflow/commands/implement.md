@@ -20,7 +20,7 @@ Implement a feature from an approved spec.
 3. **Agent check** — does a specialist exist for this work?
    - Check `.agentctx/context/agents/` for installed agents relevant to this spec's domain
    - If no matching agent is installed, run `agentctx agents list --all` to check available specialists
-   - If a relevant specialist exists, suggest adding it: `agentctx sync --agent {slug}`
+   - If a relevant specialist exists, suggest adding it: `agentctx add {slug}`
    - Read the matching agent's file to adopt their expertise before implementing
    - For multi-domain specs: suggest `/build-with-team` with agents assigned per domain
 
