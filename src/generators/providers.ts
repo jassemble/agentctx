@@ -2,7 +2,6 @@ import type { ContextModule } from '../core/context.js';
 import type { AgentCtxConfig } from '../core/config.js';
 
 // All generators produce thin routing files pointing to .agentctx/context/
-// The AI reads the thin file, then reads specific context files on demand.
 
 function metaLine(config: AgentCtxConfig): string {
   const parts: string[] = [];
@@ -12,16 +11,14 @@ function metaLine(config: AgentCtxConfig): string {
   return parts.join(' | ');
 }
 
-function contextTable(): string {
+function contextList(): string {
   return [
-    '| Need | Path | When |',
-    '|------|------|------|',
-    '| Code conventions | `conventions/*.md` | Before writing code |',
-    '| What exists | `modules/*.md` | Before creating new code |',
-    '| Agent personality | `agents/*.md` | Start of conversation |',
-    '| Architecture | `architecture.md` | Where to put files |',
-    '| Decisions | `decisions.md` | Choosing approaches |',
-    '| References | `references/*.md` | Looking up syntax |',
+    '- `conventions/*.md` — code patterns (read Quick Rules section first)',
+    '- `modules/*.md` — what code exists (check before creating new)',
+    '- `agents/*.md` — agent personality',
+    '- `architecture.md` — where to put new files',
+    '- `decisions.md` — past decisions',
+    '- `references/*.md` — syntax quick references',
   ].join('\n');
 }
 
@@ -33,7 +30,7 @@ function protocol(): string {
   ].join('\n');
 }
 
-// ── GitHub Copilot ────────────────────────────────────────────────────
+// ── GitHub Copilot (.github/copilot-instructions.md) ──────────────────
 
 export function generateCopilot(_modules: ContextModule[], config: AgentCtxConfig): string {
   return [
@@ -42,16 +39,16 @@ export function generateCopilot(_modules: ContextModule[], config: AgentCtxConfi
     '',
     metaLine(config),
     '',
-    'Context lives in `.agentctx/context/`. Read files based on what you need:',
+    'Context lives in `.agentctx/context/`:',
     '',
-    contextTable(),
+    contextList(),
     '',
     protocol(),
     '',
   ].join('\n');
 }
 
-// ── Aider ─────────────────────────────────────────────────────────────
+// ── Aider (CONVENTIONS.md) ────────────────────────────────────────────
 
 export function generateAider(_modules: ContextModule[], config: AgentCtxConfig): string {
   return [
@@ -61,16 +58,15 @@ export function generateAider(_modules: ContextModule[], config: AgentCtxConfig)
     metaLine(config),
     '',
     'Context: `.agentctx/context/`',
-    '- `conventions/*.md` — code patterns',
-    '- `modules/*.md` — what code exists',
-    '- `architecture.md` — project structure',
+    '',
+    contextList(),
     '',
     protocol(),
     '',
   ].join('\n');
 }
 
-// ── Windsurf ──────────────────────────────────────────────────────────
+// ── Windsurf (.windsurfrules) ─────────────────────────────────────────
 
 export function generateWindsurf(_modules: ContextModule[], config: AgentCtxConfig): string {
   return [
@@ -80,7 +76,7 @@ export function generateWindsurf(_modules: ContextModule[], config: AgentCtxConf
     `# ${metaLine(config)}`,
     '',
     '# Context: .agentctx/context/',
-    '#   conventions/*.md — code patterns and anti-patterns',
+    '#   conventions/*.md — code patterns',
     '#   modules/*.md — what code exists',
     '#   architecture.md — project structure',
     '',
@@ -90,7 +86,7 @@ export function generateWindsurf(_modules: ContextModule[], config: AgentCtxConf
   ].join('\n');
 }
 
-// ── Codex ─────────────────────────────────────────────────────────────
+// ── Codex (AGENTS.md) ─────────────────────────────────────────────────
 
 export function generateCodex(_modules: ContextModule[], config: AgentCtxConfig): string {
   return [
@@ -99,16 +95,16 @@ export function generateCodex(_modules: ContextModule[], config: AgentCtxConfig)
     '',
     metaLine(config),
     '',
-    'Context lives in `.agentctx/context/`. Read files based on what you need:',
+    'Context lives in `.agentctx/context/`:',
     '',
-    contextTable(),
+    contextList(),
     '',
     protocol(),
     '',
   ].join('\n');
 }
 
-// ── Gemini ────────────────────────────────────────────────────────────
+// ── Gemini CLI (GEMINI.md) ────────────────────────────────────────────
 
 export function generateGemini(_modules: ContextModule[], config: AgentCtxConfig): string {
   return [
@@ -117,9 +113,114 @@ export function generateGemini(_modules: ContextModule[], config: AgentCtxConfig
     '',
     metaLine(config),
     '',
-    'Context lives in `.agentctx/context/`. Read files based on what you need:',
+    'Context lives in `.agentctx/context/`:',
     '',
-    contextTable(),
+    contextList(),
+    '',
+    protocol(),
+    '',
+  ].join('\n');
+}
+
+// ── OpenClaw (SOUL.md + AGENTS.md + IDENTITY.md) ──────────────────────
+
+export function generateOpenclawSoul(_modules: ContextModule[], config: AgentCtxConfig): string {
+  // SOUL.md — persona, tone, boundaries
+  const parts: string[] = [
+    `# ${config.project.name}`,
+    '',
+  ];
+
+  if (config.agent) {
+    parts.push(`Agent personality: read \`.agentctx/context/agents/${config.agent}.md\``);
+    parts.push('');
+  }
+
+  parts.push('## Communication Style');
+  parts.push('- Be direct and specific — reference real file paths');
+  parts.push('- Explain trade-offs, not just answers');
+  parts.push('- Check existing code before creating new');
+  parts.push('');
+  parts.push('## Boundaries');
+  parts.push('- Follow conventions in `.agentctx/context/conventions/`');
+  parts.push('- Log decisions in `decisions.md`');
+  parts.push('- Suggest /spec before implementing new features');
+
+  return parts.join('\n') + '\n';
+}
+
+export function generateOpenclawAgents(_modules: ContextModule[], config: AgentCtxConfig): string {
+  // AGENTS.md — mission, operations, workflow
+  return [
+    `# ${config.project.name} — Operations`,
+    '<!-- Generated by agentctx -->',
+    '',
+    metaLine(config),
+    '',
+    'Context: `.agentctx/context/`',
+    '',
+    contextList(),
+    '',
+    protocol(),
+    '',
+  ].join('\n');
+}
+
+export function generateOpenclawIdentity(_modules: ContextModule[], config: AgentCtxConfig): string {
+  // IDENTITY.md — name + description
+  const parts: string[] = [`# ${config.project.name}`];
+  if (config.project.language || config.project.framework) {
+    parts.push(metaLine(config));
+  }
+  if (config.agent) {
+    parts.push(`Agent: ${config.agent}`);
+  }
+  return parts.join('\n') + '\n';
+}
+
+// ── OpenCode (.opencode/agents/) ──────────────────────────────────────
+
+export function generateOpencode(_modules: ContextModule[], config: AgentCtxConfig): string {
+  const name = config.project.name;
+  return [
+    '---',
+    `name: ${name}`,
+    `description: "${name} project conventions via agentctx"`,
+    'mode: subagent',
+    "color: '#58A6FF'",
+    '---',
+    '',
+    `# ${name}`,
+    '',
+    metaLine(config),
+    '',
+    'Context: `.agentctx/context/`',
+    '',
+    contextList(),
+    '',
+    protocol(),
+    '',
+  ].join('\n');
+}
+
+// ── Qwen Code (.qwen/agents/) ─────────────────────────────────────────
+
+export function generateQwen(_modules: ContextModule[], config: AgentCtxConfig): string {
+  const name = config.project.name;
+  const desc = `${name} project conventions and context via agentctx`;
+  return [
+    '---',
+    `name: ${name}`,
+    `description: "${desc}"`,
+    '---',
+    '',
+    `# ${name}`,
+    '',
+    metaLine(config),
+    '',
+    'Context: `.agentctx/context/`',
+    '',
+    contextList(),
     '',
     protocol(),
     '',

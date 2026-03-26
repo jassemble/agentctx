@@ -378,7 +378,7 @@ async function initWithSkills(
     context: contextFiles,
     outputs: {
       claude: { enabled: true, path: 'CLAUDE.md', max_tokens: 8000 },
-      cursorrules: { enabled: true, path: '.cursorrules', max_tokens: 4000 },
+      cursorrules: { enabled: true, path: '.cursor/rules/agentctx.mdc', max_tokens: 4000 },
     },
   };
 
@@ -538,12 +538,15 @@ async function initInteractive(
     message: 'Which output targets?',
     options: [
       { value: 'claude', label: 'CLAUDE.md (Claude Code)', hint: 'recommended' },
-      { value: 'cursorrules', label: '.cursorrules (Cursor IDE)' },
+      { value: 'cursorrules', label: '.cursor/rules/agentctx.mdc (Cursor IDE)' },
       { value: 'copilot', label: '.github/copilot-instructions.md (GitHub Copilot)' },
       { value: 'gemini', label: 'GEMINI.md (Gemini CLI)' },
       { value: 'codex', label: 'AGENTS.md (Codex CLI)' },
       { value: 'windsurf', label: '.windsurfrules (Windsurf)' },
       { value: 'aider', label: 'CONVENTIONS.md (Aider)' },
+      { value: 'opencode', label: '.opencode/agents/ (OpenCode)' },
+      { value: 'qwen', label: '.qwen/agents/ (Qwen Code)' },
+      { value: 'openclaw', label: 'OpenClaw workspace (SOUL.md + AGENTS.md)' },
     ],
     initialValues: ['claude', 'cursorrules'],
     required: true,
@@ -695,7 +698,7 @@ async function initInteractive(
     outputs.claude = { enabled: true, path: 'CLAUDE.md', max_tokens: 8000 };
   }
   if (targets.includes('cursorrules')) {
-    outputs.cursorrules = { enabled: true, path: '.cursorrules', max_tokens: 4000 };
+    outputs.cursorrules = { enabled: true, path: '.cursor/rules/agentctx.mdc', max_tokens: 4000 };
   }
   if (targets.includes('copilot')) {
     outputs.copilot = { enabled: true, path: '.github/copilot-instructions.md', max_tokens: 4000 };
@@ -711,6 +714,15 @@ async function initInteractive(
   }
   if (targets.includes('aider')) {
     outputs.aider = { enabled: true, path: 'CONVENTIONS.md', max_tokens: 4000 };
+  }
+  if (targets.includes('opencode')) {
+    outputs.opencode = { enabled: true, path: '.opencode/agents/agentctx.md', max_tokens: 4000 };
+  }
+  if (targets.includes('qwen')) {
+    outputs.qwen = { enabled: true, path: '.qwen/agents/agentctx.md', max_tokens: 4000 };
+  }
+  if (targets.includes('openclaw')) {
+    outputs.openclaw = { enabled: true, path: '.openclaw/agentctx', max_tokens: 4000 };
   }
 
   // If this is an app-level init, add inheritance
