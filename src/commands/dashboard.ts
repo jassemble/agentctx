@@ -1484,7 +1484,7 @@ function getJS(): string {
       for (var i = 0; i < files.length; i++) {
         var parts = files[i].path.split('/');
         // Remove .agentctx/context/ prefix for display
-        var displayPath = files[i].path.replace(/^\.agentctx\/context\//, '');
+        var displayPath = files[i].path.replace('.agentctx/context/', '');
         var dirParts = displayPath.split('/');
         var fileName = dirParts.pop();
         var dirKey = dirParts.join('/') || 'root';
@@ -1503,7 +1503,7 @@ function getJS(): string {
           }
         } else {
           // Compact display: conventions/nextjs → "conventions / nextjs"
-          var displayDir = dir.replace(/\//g, ' / ');
+          var displayDir = dir.split('/').join(' / ');
           html += '<div class="ctx-folder">' +
             '<div class="ctx-folder-head" data-ctx-toggle="1">' +
             '<svg class="ctx-folder-chevron" width="12" height="12" viewBox="0 0 12 12"><path d="M4.5 2L8.5 6L4.5 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
@@ -1534,7 +1534,7 @@ function getJS(): string {
       try {
         var res = await fetch('/api/file?path=' + encodeURIComponent(path));
         var text = await res.text();
-        var tokens = text.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
+        var tokens = text.split(/\\s+/).filter(function(w) { return w.length > 0; }).length;
         tokens = Math.ceil(tokens * 1.33);
         document.getElementById('ctx-viewer').innerHTML =
           '<div class="ctx-viewer-header"><span>' + esc(path) + '</span><span>' + tokens + ' tokens</span></div>' +
