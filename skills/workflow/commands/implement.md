@@ -4,7 +4,7 @@ Implement a feature from an approved spec.
 
 1. Read the spec file: $ARGUMENTS
    - If no argument provided, check `.agentctx/specs/INDEX.md` for approved specs and ask which one
-   - **Enforcement gate**: Check the spec's `status` field in the frontmatter:
+   - **Enforcement gate**: Parse the spec's YAML frontmatter and check the `status` field:
      - If `draft` — STOP. Tell the user: "This spec is still a draft. Run `/approve {spec-path}` to approve it before implementation. Approval ensures requirements are reviewed and agreed upon."
      - If `in-progress` — warn the user it's already being implemented. Ask if they want to continue.
      - If `completed` — tell the user it's already done. Ask if they want to re-implement.
@@ -45,9 +45,12 @@ Implement a feature from an approved spec.
    ```
 
 7. Transition spec status to `in-progress`:
-   - Rename the spec file from `approved-{NNNN}-{name}.md` to `in-progress-{NNNN}-{name}.md`
-     - Use `git mv` if the file is tracked, otherwise regular mv
-   - Update the `status` field in the spec frontmatter to `in-progress`
+   - Read the spec file and update its YAML frontmatter:
+     - Set `status: in-progress`
+     - Set `updated` to today's date
+     - Set `branch: feat/{NNNN}-{name}`
+     - Append to `history` array: `{ status: in-progress, date: today, branch: feat/{NNNN}-{name} }`
+   - **Do NOT rename the file** — the filename never changes
    - Update `.agentctx/specs/INDEX.md` status column to `in-progress`
 
 8. Convert acceptance criteria into a task list and plan the implementation order
@@ -68,9 +71,11 @@ Implement a feature from an approved spec.
    - Log any architectural decisions in `.agentctx/context/decisions.md`
 
 11. Transition spec status to `completed`:
-    - Rename the spec file from `in-progress-{NNNN}-{name}.md` to `completed-{NNNN}-{name}.md`
-      - Use `git mv` if the file is tracked, otherwise regular mv
-    - Update the `status` field in the spec frontmatter to `completed`
+    - Read the spec file and update its YAML frontmatter:
+      - Set `status: completed`
+      - Set `updated` to today's date
+      - Append to `history` array: `{ status: completed, date: today, checkpoint: cp-{NNNN}-done }`
+    - **Do NOT rename the file** — the filename never changes
     - Update `.agentctx/specs/INDEX.md` status column to `completed`
 
 12. Auto-checkpoint:
@@ -83,19 +88,21 @@ Implement a feature from an approved spec.
 13. Print a summary:
     ```
     Implementation complete: {title}
-    Spec: .agentctx/specs/completed-{NNNN}-{name}.md
+    Spec: .agentctx/specs/{NNNN}-{name}.md
     Checkpoint: cp-{NNNN}-done
     Module file: .agentctx/context/modules/{feature}.md
 
     Files changed:
     - {list of files created/modified}
 
-    Next step: Run /review .agentctx/specs/completed-{NNNN}-{name}.md to validate
+    Next step: Run /review .agentctx/specs/{NNNN}-{name}.md to validate
     ```
 
 ## Important
 - NEVER implement from a draft spec — approval is required
 - Always create a feature branch before making changes
+- Status transitions happen in frontmatter only — NEVER rename spec files
+- Each status transition must be recorded in the frontmatter `history` array
 - Update module files so future features can discover and reuse this code
 - The auto-checkpoint at the end creates a rollback point: `cp-{NNNN}-done`
 - If implementation fails partway, the user can `/rollback` to the pre-implementation state

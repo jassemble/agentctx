@@ -1,5 +1,6 @@
 # Specs Index
 
-| # | Title | Status | Created | Branch |
-|---|-------|--------|---------|--------|
-<!-- Specs will be added here -->
+<!-- Auto-maintained by agentctx. Do not edit manually. -->
+
+| # | Title | Status | Priority | Branch | Updated |
+|---|-------|--------|----------|--------|---------|

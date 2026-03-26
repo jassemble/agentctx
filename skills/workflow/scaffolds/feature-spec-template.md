@@ -1,9 +1,14 @@
 ---
-id: NNNN
-title: Feature Title
+id: "NNNN"
+title: "Feature Title"
 status: draft
 created: YYYY-MM-DD
+updated: YYYY-MM-DD
 branch: feat/NNNN-feature-name
+priority: P2
+history:
+  - status: draft
+    date: YYYY-MM-DD
 ---
 
 # Feature Title
@@ -13,19 +18,16 @@ branch: feat/NNNN-feature-name
 
 ## Requirements
 1. <!-- Specific, testable requirement -->
-2. <!-- Another requirement -->
 
 ## Acceptance Criteria
 - [ ] <!-- Verifiable condition -->
-- [ ] <!-- Another condition -->
 - [ ] <!-- Tests pass -->
 
 ## Affected Files
-- `src/path/to/new-file.ts` — (create) description
-- `src/path/to/existing.ts` — (modify) what changes
+- `src/path/to/file.ts` — (create/modify) description
 
 ## Dependencies
-- <!-- Other modules, APIs, or services this depends on -->
+<!-- Other modules, APIs, or services this depends on -->
 
 ## Notes
-- <!-- Implementation hints, edge cases, gotchas -->
+<!-- Implementation hints, edge cases, gotchas -->

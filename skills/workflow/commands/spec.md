@@ -10,8 +10,10 @@ Create a feature specification from the user's description.
 
 2. Read the feature description provided: $ARGUMENTS
 3. Determine the next spec number by reading `.agentctx/specs/INDEX.md` (start at 0001 if INDEX.md doesn't exist or is empty)
-4. Create the spec file at `.agentctx/specs/draft-{NNNN}-{kebab-name}.md` using the template at `.agentctx/specs/_templates/feature-spec.md`
+4. Create the spec file at `.agentctx/specs/{NNNN}-{kebab-name}.md` using the template at `.agentctx/specs/_templates/feature-spec.md`
+   - **No status prefix in filename** — status is tracked in YAML frontmatter only
 5. Fill in all sections:
+   - **Frontmatter**: Set `id`, `title`, `status: draft`, `created` and `updated` to today's date, `priority: P2`, and initialize `history` array with `[{ status: draft, date: today }]`
    - **Title**: Clear, concise feature name
    - **Description**: What this feature does and why
    - **Requirements**: Specific, testable requirements (numbered)
@@ -24,6 +26,7 @@ Create a feature specification from the user's description.
 
 ## Important
 - The spec status is `draft` — it needs approval before implementation
+- Status is tracked in YAML frontmatter, NOT in the filename
 - Be specific in acceptance criteria — each one should be verifiable
 - List ALL files that will be touched, not just new ones
 - Check `.agentctx/context/modules/` for existing modules this feature interacts with

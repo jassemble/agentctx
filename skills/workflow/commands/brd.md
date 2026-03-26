@@ -13,9 +13,11 @@ A BRD captures the **business "why"** before the technical "what." Use this for 
 
 3. Determine the next BRD number by reading `.agentctx/specs/INDEX.md`
 
-4. Create the BRD at `.agentctx/specs/draft-BRD-{NNNN}-{kebab-name}.md` using the template at `.agentctx/specs/_templates/brd-template.md`
+4. Create the BRD at `.agentctx/specs/{NNNN}-{kebab-name}.md` using the template at `.agentctx/specs/_templates/brd-template.md`
+   - **No status prefix in filename** — status is tracked in YAML frontmatter only
 
 5. Fill in ALL sections:
+   - **Frontmatter**: Set `id`, `title`, `status: draft`, `created` and `updated` to today's date, `priority`, and initialize `history` array with `[{ status: draft, date: today }]`
    - **Business Context**: Why this feature matters — the problem, not the solution
    - **User Stories**: Real user scenarios in "As a... I want... so that..." format
    - **Acceptance Criteria**: Business-level, not technical (e.g., "users can reset their password" not "POST /api/reset returns 200")
@@ -28,7 +30,7 @@ A BRD captures the **business "why"** before the technical "what." Use this for 
 
 7. Print the BRD path and suggest next steps:
    ```
-   Created: .agentctx/specs/draft-BRD-0001-user-auth.md
+   Created: .agentctx/specs/{NNNN}-user-auth.md
 
    Next steps:
    1. Review the BRD and run /approve to approve it

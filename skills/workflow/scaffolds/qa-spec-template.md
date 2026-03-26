@@ -1,11 +1,16 @@
 ---
-id: NNNN
-title: Feature Title — QA
+id: "NNNN"
+title: "Feature Title — QA"
 status: draft
 created: YYYY-MM-DD
+updated: YYYY-MM-DD
 team: qa
-parent_spec: NNNN
+parent_spec: "NNNN"
 branch: feat/NNNN-feature-name
+priority: P2
+history:
+  - status: draft
+    date: YYYY-MM-DD
 ---
 
 # Feature Title — QA

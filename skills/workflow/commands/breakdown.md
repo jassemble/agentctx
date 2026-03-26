@@ -4,7 +4,7 @@ Break down an approved spec into team-specific child specs.
 
 1. Read the parent spec: $ARGUMENTS
    - If no argument provided, check `.agentctx/specs/INDEX.md` for approved specs and ask which one
-   - The spec MUST be `approved` — if it is `draft`, tell the user to run `/approve` first
+   - The spec MUST be `approved` — check the frontmatter `status` field. If it is `draft`, tell the user to run `/approve` first
    - If the spec is already broken down (has child specs in INDEX.md), warn the user
 
 2. Read the parent spec fully — understand:
@@ -25,15 +25,18 @@ Break down an approved spec into team-specific child specs.
 5. For each affected team, create a child spec:
    - Use the template from `.agentctx/specs/_templates/{team}-spec.md`
    - If the template does not exist, use `.agentctx/specs/_templates/feature-spec.md` as fallback
-   - Set the filename: `.agentctx/specs/draft-{NNNN}-{parent-kebab-name}-{team}.md`
+   - Set the filename: `.agentctx/specs/{NNNN}-{parent-kebab-name}-{team}.md`
+     - **No status prefix in filename** — status is tracked in YAML frontmatter only
    - Fill in the frontmatter:
      - `id`: next available number
      - `title`: "{Parent Title} — {Team}" (e.g., "User Auth — Backend")
      - `status: draft`
-     - `created`: today's date
+     - `created` and `updated`: today's date
      - `team`: the team name (backend, frontend, mobile, qa, devops)
      - `parent_spec`: the parent spec's ID number
      - `branch`: same as parent spec's branch
+     - `priority`: inherit from parent spec
+     - `history`: `[{ status: draft, date: today }]`
    - Extract ONLY the requirements relevant to this team
    - Create team-specific acceptance criteria from the parent's criteria
    - List only the affected files relevant to this team
@@ -48,9 +51,9 @@ Break down an approved spec into team-specific child specs.
    Breakdown of spec {NNNN}: {title}
 
    Created {N} child specs:
-   - {NNNN} {title} — Backend (specs/draft-NNNN-name-backend.md)
-   - {NNNN} {title} — Frontend (specs/draft-NNNN-name-frontend.md)
-   - {NNNN} {title} — QA (specs/draft-NNNN-name-qa.md)
+   - {NNNN} {title} — Backend (specs/{NNNN}-name-backend.md)
+   - {NNNN} {title} — Frontend (specs/{NNNN}-name-frontend.md)
+   - {NNNN} {title} — QA (specs/{NNNN}-name-qa.md)
 
    Next steps:
    1. Review each child spec and adjust requirements

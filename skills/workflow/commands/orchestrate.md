@@ -8,6 +8,7 @@ For parallel implementation with agent teams, use `/build-with-team` instead.
 
 1. Read the spec: $ARGUMENTS
    - Must be an approved spec or have approved child specs from `/breakdown`
+   - Parse the YAML frontmatter to verify `status` is `approved`
    - If the spec has child specs, use those as the implementation order
    - If no child specs, determine affected areas from the spec's "Affected Files" section
 
@@ -31,8 +32,11 @@ For parallel implementation with agent teams, use `/build-with-team` instead.
 
 4. After all areas are done:
    - Run full test suite
-   - Update spec status to completed
-   - Update `.agentctx/specs/INDEX.md`
+   - Update spec frontmatter:
+     - Set `status: completed`
+     - Set `updated` to today's date
+     - Append to `history` array: `{ status: completed, date: today, checkpoint: cp-{spec-id}-done }`
+   - Update `.agentctx/specs/INDEX.md` status and updated columns
    - Update `.agentctx/context/status.md`
    - Create final checkpoint: `cp-{spec-id}-done`
 

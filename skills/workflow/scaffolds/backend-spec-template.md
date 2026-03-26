@@ -1,11 +1,16 @@
 ---
-id: NNNN
-title: Feature Title — Backend
+id: "NNNN"
+title: "Feature Title — Backend"
 status: draft
 created: YYYY-MM-DD
+updated: YYYY-MM-DD
 team: backend
-parent_spec: NNNN
+parent_spec: "NNNN"
 branch: feat/NNNN-feature-name
+priority: P2
+history:
+  - status: draft
+    date: YYYY-MM-DD
 ---
 
 # Feature Title — Backend

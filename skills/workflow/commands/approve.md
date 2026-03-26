@@ -10,39 +10,42 @@ Approve a draft spec, gating it for implementation.
    - If multiple drafts exist, list them and ask the user which to approve
    - If no drafts exist, tell the user and stop
 
-2. Read the spec file
+2. Read the spec file and parse its YAML frontmatter
 
-3. Present a summary for review:
+3. Verify the frontmatter `status` field is `draft`:
+   - If status is not `draft` (already approved, in-progress, or completed), tell the user and stop
+
+4. Present a summary for review:
    - **Title**: from the spec frontmatter
    - **Requirements count**: number of numbered items in the Requirements section
    - **Acceptance criteria count**: number of checkbox items in the Acceptance Criteria section
    - **Affected files**: list from the spec
 
-4. Show the full spec content so the user can review it
+5. Show the full spec content so the user can review it
 
-5. Ask the user: "Do you approve this spec for implementation? (yes/no)"
+6. Ask the user: "Do you approve this spec for implementation? (yes/no)"
    - If the user says no or requests changes, stop and suggest they edit the spec
 
-6. If approved:
-   - Determine the new filename: replace `draft-` prefix with `approved-` in the filename
-   - Check if the file is tracked by git: `git ls-files --error-unmatch {spec-path} 2>/dev/null`
-     - If tracked: `git mv {old-path} {new-path}`
-     - If not tracked: rename the file using standard mv
-   - Update the spec frontmatter: set `status: approved`
+7. If approved, update the spec file frontmatter:
+   - Set `status: approved`
+   - Set `updated` to today's date
+   - Append to `history` array: `{ status: approved, date: today }`
+   - **Do NOT rename the file** — the filename never changes
 
-7. Update `.agentctx/specs/INDEX.md`:
+8. Update `.agentctx/specs/INDEX.md`:
    - Find the row matching this spec number
    - Change the Status column from `draft` to `approved`
-   - Update the filename/link if INDEX.md references it
+   - Update the Updated column to today's date
 
-8. Print confirmation:
+9. Print confirmation:
    ```
    Spec {NNNN} approved: {title}
-   File: .agentctx/specs/approved-{NNNN}-{name}.md
-   Next step: Run /implement .agentctx/specs/approved-{NNNN}-{name}.md
+   File: .agentctx/specs/{NNNN}-{name}.md
+   Next step: Run /implement .agentctx/specs/{NNNN}-{name}.md
    ```
 
 ## Important
-- Only `draft` specs can be approved — if the spec is already approved, in-progress, or completed, tell the user
-- Do not modify the spec content during approval — only the status and filename change
+- Only `draft` specs can be approved — check frontmatter status, not filename
+- Do not modify the spec content during approval — only the frontmatter status, updated date, and history change
+- Do NOT rename the file — status is tracked in frontmatter only
 - If the spec has no acceptance criteria, warn the user that this will make review difficult

@@ -11,15 +11,17 @@ Use this when you need a focused spec for a single team (backend, frontend, mobi
 2. Determine the next spec number by reading `.agentctx/specs/INDEX.md`
 
 3. Select the appropriate template from `.agentctx/specs/_templates/`:
-   - backend → `backend-spec.md`
-   - frontend → `frontend-spec.md`
-   - mobile → `mobile-spec.md`
-   - qa → `qa-spec.md`
-   - devops → `devops-spec.md`
+   - backend -> `backend-spec.md`
+   - frontend -> `frontend-spec.md`
+   - mobile -> `mobile-spec.md`
+   - qa -> `qa-spec.md`
+   - devops -> `devops-spec.md`
 
-4. Create the spec file at `.agentctx/specs/draft-{NNNN}-{kebab-name}.md` using the team template
+4. Create the spec file at `.agentctx/specs/{NNNN}-{kebab-name}.md` using the team template
+   - **No status prefix in filename** — status is tracked in YAML frontmatter only
 
 5. Fill in all sections with team-specific details:
+   - **Frontmatter**: Set `id`, `title`, `status: draft`, `created` and `updated` to today's date, `team`, `priority: P2`, and initialize `history` array with `[{ status: draft, date: today }]`
    - For backend: API endpoints, request/response contracts, database changes
    - For frontend: pages/routes, components, state management
    - For mobile: screens, navigation, platform-specific behavior
@@ -31,6 +33,6 @@ Use this when you need a focused spec for a single team (backend, frontend, mobi
 7. Print the spec path and summary
 
 ## When to use /rfp vs /spec
-- Use `/spec` when building a full feature that may span multiple teams → then `/breakdown`
+- Use `/spec` when building a full feature that may span multiple teams -> then `/breakdown`
 - Use `/rfp` when you know exactly which team owns the work and don't need a parent spec
 - `/rfp` is faster for focused, single-team tasks

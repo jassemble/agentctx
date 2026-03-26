@@ -1,10 +1,14 @@
 ---
-id: BRD-NNNN
-title:
+id: "NNNN"
+title: "BRD Title"
 status: draft
 created: YYYY-MM-DD
-priority: # P0-Critical, P1-High, P2-Medium, P3-Low
+updated: YYYY-MM-DD
+priority: P2
 affected_areas: [] # backend, frontend, mobile, qa, devops
+history:
+  - status: draft
+    date: YYYY-MM-DD
 ---
 
 # BRD-{NNNN}: {Title}

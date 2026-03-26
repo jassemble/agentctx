@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { readFile, readdir, stat, rename, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, readdir, stat, writeFile, mkdir } from 'node:fs/promises';
 import { watch } from 'node:fs';
 import { join, basename, extname, relative } from 'node:path';
 import { exec, execFile } from 'node:child_process';
@@ -73,7 +73,20 @@ interface SpecEntry {
   title: string;
   status: string;
   branch: string;
+  priority: string;
   path: string;
+}
+
+function parseFrontmatter(content: string): Record<string, string> {
+  const fm: Record<string, string> = {};
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return fm;
+  const lines = match[1].split('\n');
+  for (const line of lines) {
+    const kv = line.match(/^(\w[\w-]*):\s*"?([^"\n]*)"?\s*$/);
+    if (kv) fm[kv[1]] = kv[2].trim();
+  }
+  return fm;
 }
 
 async function getSpecs(projectRoot: string): Promise<{ specs: SpecEntry[] }> {
@@ -81,48 +94,57 @@ async function getSpecs(projectRoot: string): Promise<{ specs: SpecEntry[] }> {
   const specs: SpecEntry[] = [];
   const seen = new Set<string>();
 
-  // 1. Parse INDEX.md table if it exists
+  // 1. Parse INDEX.md table as fallback
   const indexPath = join(specsDir, 'INDEX.md');
   if (existsSync(indexPath)) {
     try {
       const content = await readFile(indexPath, 'utf-8');
       const lines = content.split('\n');
       for (const line of lines) {
-        // Match table rows like: | 0001 | Title | status | branch | path |
-        const match = line.match(/\|\s*(\d{4})\s*\|\s*(.*?)\s*\|\s*(draft|approved|in-progress|completed)\s*\|\s*(.*?)\s*\|/i);
+        // Match table rows: | 0001 | Title | status | priority | branch | updated |
+        const match = line.match(/\|\s*(\d{4})\s*\|\s*(.*?)\s*\|\s*(draft|approved|in-progress|completed|cancelled)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|/i);
         if (match) {
-          const [, id, title, status, rest] = match;
-          // Try to extract branch from the rest
-          const branchMatch = rest.match(/feat\/\S+|fix\/\S+|\S+-\d{4}\S*/);
-          const branch = branchMatch ? branchMatch[0] : `feat/${id}-${title.toLowerCase().replace(/\s+/g, '-')}`;
-          // Try to find the path reference
-          const pathMatch = line.match(/\[.*?\]\((.*?)\)/);
-          const specPath = pathMatch ? `.agentctx/specs/${pathMatch[1]}` : `.agentctx/specs/${status.toLowerCase()}-${id}-${title.toLowerCase().replace(/\s+/g, '-')}.md`;
+          const [, id, title, status, priority, branch] = match;
           seen.add(id);
-          specs.push({ id, title: title.trim(), status: status.toLowerCase(), branch: branch.trim(), path: specPath });
+          specs.push({ id, title: title.trim(), status: status.toLowerCase(), priority: priority.trim() || 'P2', branch: branch.trim(), path: `.agentctx/specs/${id}-${title.trim().toLowerCase().replace(/\s+/g, '-')}.md` });
         }
       }
     } catch { /* ignore */ }
   }
 
-  // 2. Scan specs/ directory for spec files matching {status}-{id}-{name}.md
+  // 2. Scan specs/ directory for ALL .md files (except INDEX.md and _templates/)
   if (existsSync(specsDir)) {
     try {
       const entries = await readdir(specsDir);
       for (const entry of entries) {
-        if (!entry.endsWith('.md') || entry === 'INDEX.md') continue;
-        const match = entry.match(/^(draft|approved|in-progress|completed)-(\d{4})-(.+)\.md$/i);
-        if (match && !seen.has(match[2])) {
-          const [, status, id, namePart] = match;
-          const title = namePart.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        if (!entry.endsWith('.md') || entry === 'INDEX.md' || entry.startsWith('_')) continue;
+        // Skip _templates directory entries
+        const fullPath = join(specsDir, entry);
+        try {
+          const fileStat = await stat(fullPath);
+          if (fileStat.isDirectory()) continue;
+        } catch { continue; }
+
+        // Parse frontmatter to get status, id, title, branch, priority
+        try {
+          const content = await readFile(fullPath, 'utf-8');
+          const fm = parseFrontmatter(content);
+          const id = fm.id || entry.match(/^(\d{4})/)?.[1] || '';
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          const title = fm.title || entry.replace(/^\d{4}-/, '').replace(/\.md$/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          const status = fm.status || 'draft';
+          const branch = fm.branch || `feat/${id}-${entry.replace(/^\d{4}-/, '').replace(/\.md$/, '')}`;
+          const priority = fm.priority || 'P2';
           specs.push({
             id,
             title,
             status: status.toLowerCase(),
-            branch: `feat/${id}-${namePart}`,
+            branch,
+            priority,
             path: `.agentctx/specs/${entry}`,
           });
-        }
+        } catch { /* skip individual file errors */ }
       }
     } catch { /* ignore */ }
   }
@@ -309,11 +331,11 @@ async function getHealth(projectRoot: string): Promise<HealthResult> {
   }
 
   // Check: Specs tracked
-  const indexPath = join(projectRoot, 'specs', 'INDEX.md');
-  if (existsSync(indexPath)) {
+  const specIndexPath = join(projectRoot, '.agentctx', 'specs', 'INDEX.md');
+  if (existsSync(specIndexPath)) {
     try {
-      const content = await readFile(indexPath, 'utf-8');
-      const specLines = content.split('\n').filter(l => /\|\s*(draft|approved|in-progress|completed)\s*\|/i.test(l));
+      const content = await readFile(specIndexPath, 'utf-8');
+      const specLines = content.split('\n').filter(l => /\|\s*(draft|approved|in-progress|completed|cancelled)\s*\|/i.test(l));
       if (specLines.length > 0) {
         checks.push({ label: 'Specs tracked', pass: true, detail: `${specLines.length} specs` });
         score += 1;
@@ -746,7 +768,7 @@ function getDashboardHTML(projectName: string): string {
         html += '<div class="kanban-col"><div class="kanban-col-title">' + esc(col.label) + ' <span class="count">' + items.length + '</span></div>';
         for (const s of items) {
           html += '<div class="spec-card" onclick="viewSpec(\\'' + esc(s.path) + '\\')">';
-          html += '<div class="spec-id">#' + esc(s.id) + '</div>';
+          html += '<div class="spec-id">#' + esc(s.id) + (s.priority ? ' <span style="float:right;font-size:10px;color:var(--text-dim)">' + esc(s.priority) + '</span>' : '') + '</div>';
           html += '<div class="spec-title">' + esc(s.title) + '</div>';
           html += '<div class="spec-branch">' + esc(s.branch) + '</div>';
           if (s.status === 'draft') {
@@ -1188,25 +1210,51 @@ export async function dashboardCommand(options: DashboardOptions): Promise<void>
         return;
       }
 
-      // API: Approve spec
+      // API: Approve spec (frontmatter-based, no file rename)
       if (url.pathname === '/api/spec/approve' && req.method === 'POST') {
         const specPath = url.searchParams.get('path');
         if (!specPath) { jsonResponse(res, { error: 'Missing path' }, 400); return; }
         const resolved = join(projectRoot, specPath);
         if (!resolved.startsWith(projectRoot)) { jsonResponse(res, { error: 'Forbidden' }, 403); return; }
 
-        // Only draft specs can be approved
-        const filename = basename(resolved);
-        if (!filename.startsWith('draft-')) {
-          jsonResponse(res, { error: 'Only draft specs can be approved' }, 400);
-          return;
-        }
-
-        const newFilename = filename.replace(/^draft-/, 'approved-');
-        const newPath = join(projectRoot, 'specs', newFilename);
         try {
-          await rename(resolved, newPath);
-          jsonResponse(res, { ok: true, newPath: `.agentctx/specs/${newFilename}` });
+          const content = await readFile(resolved, 'utf-8');
+          const fm = parseFrontmatter(content);
+
+          // Only draft specs can be approved
+          if (fm.status !== 'draft') {
+            jsonResponse(res, { error: `Only draft specs can be approved (current status: ${fm.status || 'unknown'})` }, 400);
+            return;
+          }
+
+          const today = new Date().toISOString().split('T')[0];
+          // Update frontmatter: status, updated date, append history entry
+          let updated = content;
+          updated = updated.replace(/^(status:\s*)draft/m, '$1approved');
+          updated = updated.replace(/^(updated:\s*)\S+/m, `$1${today}`);
+          // Append to history array
+          const historyEntry = `  - status: approved\n    date: ${today}`;
+          updated = updated.replace(/(history:\n(?:[\s\S]*?))(\n---)/m, `$1\n${historyEntry}$2`);
+
+          await writeFile(resolved, updated, 'utf-8');
+
+          // Update INDEX.md
+          const indexPath = join(projectRoot, '.agentctx', 'specs', 'INDEX.md');
+          if (existsSync(indexPath)) {
+            try {
+              let index = await readFile(indexPath, 'utf-8');
+              const specId = fm.id;
+              if (specId) {
+                index = index.replace(
+                  new RegExp(`(\\|\\s*${specId}\\s*\\|[^|]*\\|\\s*)draft(\\s*\\|)`),
+                  `$1approved$2`
+                );
+                await writeFile(indexPath, index, 'utf-8');
+              }
+            } catch { /* ignore index update failure */ }
+          }
+
+          jsonResponse(res, { ok: true, path: specPath });
         } catch (err) {
           jsonResponse(res, { error: String(err) }, 500);
         }
@@ -1261,32 +1309,37 @@ export async function dashboardCommand(options: DashboardOptions): Promise<void>
             const templatesDir = join(specsDir, '_templates');
             await mkdir(specsDir, { recursive: true });
 
-            // Find next ID
+            // Find next ID by scanning all .md files for frontmatter id or filename pattern
             let maxId = 0;
             try {
               const files = await readdir(specsDir);
               for (const f of files) {
-                const match = f.match(/(?:draft|approved|in-progress|completed)-(?:BRD-)?(\d+)/);
-                if (match) maxId = Math.max(maxId, parseInt(match[1]));
+                // Match {NNNN}-{name}.md or legacy {status}-{NNNN}-{name}.md
+                const match = f.match(/^(?:\d{4})-/) ? f.match(/^(\d{4})-/) : f.match(/(?:draft|approved|in-progress|completed)-(?:BRD-)?(\d+)/);
+                if (match) {
+                  const idNum = parseInt(match[1] || match[2]);
+                  if (!isNaN(idNum)) maxId = Math.max(maxId, idNum);
+                }
               }
             } catch { /* empty dir */ }
             const nextId = String(maxId + 1).padStart(4, '0');
 
             const kebab = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-            const isBrd = type === 'brd';
-            const prefix = isBrd ? `draft-BRD-${nextId}` : `draft-${nextId}`;
-            const filename = `${prefix}-${kebab}.md`;
+            // No status prefix in filename — status tracked in frontmatter
+            const filename = `${nextId}-${kebab}.md`;
+            const today = new Date().toISOString().split('T')[0];
 
             // Load template
+            const isBrd = type === 'brd';
             const templateName = isBrd ? 'brd-template.md' : 'feature-spec.md';
             const templatePath = join(templatesDir, templateName);
             let content: string;
             try {
               content = await readFile(templatePath, 'utf-8');
-              content = content.replace(/NNNN/g, nextId).replace(/\{Title\}|Feature Title/g, title).replace(/YYYY-MM-DD/g, new Date().toISOString().split('T')[0]);
+              content = content.replace(/NNNN/g, nextId).replace(/\{Title\}|Feature Title|BRD Title/g, title).replace(/YYYY-MM-DD/g, today);
             } catch {
-              // No template — create minimal spec
-              content = `---\nid: ${nextId}\ntitle: ${title}\nstatus: draft\ncreated: ${new Date().toISOString().split('T')[0]}\n---\n\n# ${title}\n\n## Description\n\n## Acceptance Criteria\n- [ ] \n`;
+              // No template — create minimal spec with history
+              content = `---\nid: "${nextId}"\ntitle: "${title}"\nstatus: draft\ncreated: ${today}\nupdated: ${today}\npriority: P2\nhistory:\n  - status: draft\n    date: ${today}\n---\n\n# ${title}\n\n## Description\n\n## Acceptance Criteria\n- [ ] \n`;
             }
 
             await writeFile(join(specsDir, filename), content, 'utf-8');
@@ -1295,7 +1348,7 @@ export async function dashboardCommand(options: DashboardOptions): Promise<void>
             const indexPath = join(specsDir, 'INDEX.md');
             try {
               let index = await readFile(indexPath, 'utf-8');
-              index += `| ${nextId} | ${title} | draft | ${new Date().toISOString().split('T')[0]} | — |\n`;
+              index += `| ${nextId} | ${title} | draft | P2 | — | ${today} |\n`;
               await writeFile(indexPath, index, 'utf-8');
             } catch { /* no index */ }
 

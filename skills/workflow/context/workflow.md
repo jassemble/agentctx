@@ -26,16 +26,41 @@ All feature work follows a spec-first approach. Never implement without a spec.
 4. **Breakdown** (multi-team): Use `/breakdown` to split a BRD into team-specific child specs
 5. **Implement** (single-team): Use `/implement` to build from an approved spec
 6. **Build with team**: Use `/build-with-team` for coordinated multi-agent implementation
-6. **Review**: Use `/review` to validate against spec criteria
-7. **Update context**: Use `/refresh-context` to update module documentation
+7. **Review**: Use `/review` to validate against spec criteria
+8. **Update context**: Use `/refresh-context` to update module documentation
 
 ### Spec Lifecycle
 
-All specs live in `.agentctx/specs/` directory with status-based naming:
-- `.agentctx/specs/draft-NNNN-name.md` — created, not yet approved
-- `.agentctx/specs/approved-NNNN-name.md` — reviewed and ready to implement
-- `.agentctx/specs/in-progress-NNNN-name.md` — currently being worked on
-- `.agentctx/specs/completed-NNNN-name.md` — implementation finished
+Specs live in `.agentctx/specs/` as `{NNNN}-{name}.md`. Status is tracked in YAML frontmatter, not in the filename:
+
+```yaml
+status: draft → approved → in-progress → completed
+```
+
+Valid transitions:
+- draft → approved (after review)
+- approved → in-progress (when implementation starts)
+- in-progress → completed (when done)
+- in-progress → approved (rollback if blocked)
+- any → cancelled (abort)
+
+Each transition is recorded in the `history` array with date and context:
+
+```yaml
+history:
+  - status: draft
+    date: 2026-03-25
+  - status: approved
+    date: 2026-03-25
+  - status: in-progress
+    date: 2026-03-26
+    branch: feat/0001-auth
+  - status: completed
+    date: 2026-03-26
+    checkpoint: cp-0001-done
+```
+
+**Important**: Filenames NEVER change. The filename is always `{NNNN}-{name}.md` regardless of status.
 
 `.agentctx/specs/INDEX.md` is the master tracker of all specs and their status.
 
@@ -57,6 +82,7 @@ Approval is the gate between planning and building:
 - Approved specs are contracts — the team agrees on what will be built
 - Implementation (`/implement`) refuses to start from a draft spec
 - Use `/approve` to review and approve a spec
+- Approval updates the frontmatter status and history — the file is NOT renamed
 
 ### Checkpoint / Rollback System
 
@@ -90,3 +116,4 @@ Key principles:
 - Log important decisions in `.agentctx/context/decisions.md`
 - Create checkpoints after significant work for rollback safety
 - When a user asks to implement a feature, suggest running `/spec` first
+- Status changes happen in frontmatter — NEVER rename spec files
