@@ -11,9 +11,55 @@ import { estimateTokens } from '../utils/tokens.js';
 
 const execFileAsync = promisify(execFile);
 
+// ── Types ──────────────────────────────────────────────────────────────
+
 interface DashboardOptions {
   port: string;
   open?: boolean;
+}
+
+interface SpecEntry {
+  id: string;
+  title: string;
+  status: string;
+  branch: string;
+  priority: string;
+  path: string;
+}
+
+interface ModuleEntry {
+  name: string;
+  filename: string;
+  exports: string[];
+  files: string[];
+  lastModified: string;
+  tokens: number;
+}
+
+interface HealthCheck {
+  label: string;
+  pass: boolean;
+  detail?: string;
+}
+
+interface HealthResult {
+  score: number;
+  max: number;
+  checks: HealthCheck[];
+  recommendations: string[];
+}
+
+interface ActivityEvent {
+  time: string;
+  date: string;
+  message: string;
+  type: 'commit' | 'spec' | 'checkpoint' | 'module';
+}
+
+interface ContextFile {
+  name: string;
+  path: string;
+  tokens: number;
 }
 
 // ── SSE live reload ────────────────────────────────────────────────────
@@ -68,15 +114,6 @@ function readBody(req: IncomingMessage): Promise<string> {
 
 // ── API: Specs ─────────────────────────────────────────────────────────
 
-interface SpecEntry {
-  id: string;
-  title: string;
-  status: string;
-  branch: string;
-  priority: string;
-  path: string;
-}
-
 function parseFrontmatter(content: string): Record<string, string> {
   const fm: Record<string, string> = {};
   const match = content.match(/^---\n([\s\S]*?)\n---/);
@@ -101,12 +138,18 @@ async function getSpecs(projectRoot: string): Promise<{ specs: SpecEntry[] }> {
       const content = await readFile(indexPath, 'utf-8');
       const lines = content.split('\n');
       for (const line of lines) {
-        // Match table rows: | 0001 | Title | status | priority | branch | updated |
         const match = line.match(/\|\s*(\d{4})\s*\|\s*(.*?)\s*\|\s*(draft|approved|in-progress|completed|cancelled)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|/i);
         if (match) {
           const [, id, title, status, priority, branch] = match;
           seen.add(id);
-          specs.push({ id, title: title.trim(), status: status.toLowerCase(), priority: priority.trim() || 'P2', branch: branch.trim(), path: `.agentctx/specs/${id}-${title.trim().toLowerCase().replace(/\s+/g, '-')}.md` });
+          specs.push({
+            id,
+            title: title.trim(),
+            status: status.toLowerCase(),
+            priority: priority.trim() || 'P2',
+            branch: branch.trim(),
+            path: `.agentctx/specs/${id}-${title.trim().toLowerCase().replace(/\s+/g, '-')}.md`,
+          });
         }
       }
     } catch { /* ignore */ }
@@ -118,14 +161,12 @@ async function getSpecs(projectRoot: string): Promise<{ specs: SpecEntry[] }> {
       const entries = await readdir(specsDir);
       for (const entry of entries) {
         if (!entry.endsWith('.md') || entry === 'INDEX.md' || entry.startsWith('_')) continue;
-        // Skip _templates directory entries
         const fullPath = join(specsDir, entry);
         try {
           const fileStat = await stat(fullPath);
           if (fileStat.isDirectory()) continue;
         } catch { continue; }
 
-        // Parse frontmatter to get status, id, title, branch, priority
         try {
           const content = await readFile(fullPath, 'utf-8');
           const fm = parseFrontmatter(content);
@@ -136,14 +177,7 @@ async function getSpecs(projectRoot: string): Promise<{ specs: SpecEntry[] }> {
           const status = fm.status || 'draft';
           const branch = fm.branch || `feat/${id}-${entry.replace(/^\d{4}-/, '').replace(/\.md$/, '')}`;
           const priority = fm.priority || 'P2';
-          specs.push({
-            id,
-            title,
-            status: status.toLowerCase(),
-            branch,
-            priority,
-            path: `.agentctx/specs/${entry}`,
-          });
+          specs.push({ id, title, status: status.toLowerCase(), branch, priority, path: `.agentctx/specs/${entry}` });
         } catch { /* skip individual file errors */ }
       }
     } catch { /* ignore */ }
@@ -153,15 +187,6 @@ async function getSpecs(projectRoot: string): Promise<{ specs: SpecEntry[] }> {
 }
 
 // ── API: Modules ───────────────────────────────────────────────────────
-
-interface ModuleEntry {
-  name: string;
-  filename: string;
-  exports: string[];
-  files: string[];
-  lastModified: string;
-  tokens: number;
-}
 
 async function getModules(projectRoot: string): Promise<{ modules: ModuleEntry[] }> {
   const modulesDir = join(projectRoot, '.agentctx', 'context', 'modules');
@@ -179,7 +204,6 @@ async function getModules(projectRoot: string): Promise<{ modules: ModuleEntry[]
         const fileStat = await stat(fullPath);
         const name = basename(entry, extname(entry));
 
-        // Parse exports section
         const exportsList: string[] = [];
         const exportsMatch = content.match(/##\s*Exports?\s*\n([\s\S]*?)(?=\n##|\n$|$)/i);
         if (exportsMatch) {
@@ -190,7 +214,6 @@ async function getModules(projectRoot: string): Promise<{ modules: ModuleEntry[]
           }
         }
 
-        // Parse key files section
         const filesList: string[] = [];
         const filesMatch = content.match(/##\s*Key\s*Files?\s*\n([\s\S]*?)(?=\n##|\n$|$)/i);
         if (filesMatch) {
@@ -218,25 +241,11 @@ async function getModules(projectRoot: string): Promise<{ modules: ModuleEntry[]
 
 // ── API: Health ────────────────────────────────────────────────────────
 
-interface HealthCheck {
-  label: string;
-  pass: boolean;
-  detail?: string;
-}
-
-interface HealthResult {
-  score: number;
-  max: number;
-  checks: HealthCheck[];
-  recommendations: string[];
-}
-
 async function getHealth(projectRoot: string): Promise<HealthResult> {
   const checks: HealthCheck[] = [];
   const recommendations: string[] = [];
   let score = 0;
 
-  // Import detection logic
   let profile;
   let suggestedSkills: string[] = [];
   try {
@@ -247,7 +256,6 @@ async function getHealth(projectRoot: string): Promise<HealthResult> {
     profile = null;
   }
 
-  // Load config
   let config = null;
   try {
     const { findConfigPath, loadConfig } = await import('../core/config.js');
@@ -257,7 +265,6 @@ async function getHealth(projectRoot: string): Promise<HealthResult> {
 
   const installedSkills = config?.skills ?? [];
 
-  // Check: .agentctx exists
   if (config) {
     checks.push({ label: '.agentctx initialized', pass: true });
     score += 1;
@@ -266,7 +273,6 @@ async function getHealth(projectRoot: string): Promise<HealthResult> {
     recommendations.push('Run: agentctx init');
   }
 
-  // Check: Skills match stack
   if (config && profile) {
     const missing = suggestedSkills.filter(s => !installedSkills.includes(s));
     if (missing.length === 0 && installedSkills.length > 0) {
@@ -281,10 +287,9 @@ async function getHealth(projectRoot: string): Promise<HealthResult> {
     }
   }
 
-  // Check: Modules documented
   const modulesDir = join(projectRoot, '.agentctx', 'context', 'modules');
   let moduleCount = 0;
-  let staleModules: string[] = [];
+  const staleModules: string[] = [];
   if (existsSync(modulesDir)) {
     try {
       const entries = await readdir(modulesDir);
@@ -314,7 +319,6 @@ async function getHealth(projectRoot: string): Promise<HealthResult> {
     score += 1;
   }
 
-  // Check: architecture.md
   const archPath = join(projectRoot, '.agentctx', 'context', 'architecture.md');
   if (existsSync(archPath)) {
     try {
@@ -330,7 +334,6 @@ async function getHealth(projectRoot: string): Promise<HealthResult> {
     } catch { /* ignore */ }
   }
 
-  // Check: Specs tracked
   const specIndexPath = join(projectRoot, '.agentctx', 'specs', 'INDEX.md');
   if (existsSync(specIndexPath)) {
     try {
@@ -343,7 +346,6 @@ async function getHealth(projectRoot: string): Promise<HealthResult> {
     } catch { /* ignore */ }
   }
 
-  // Check: Checkpoints
   try {
     const { stdout } = await execFileAsync('git', ['tag', '-l', 'cp-*', '--sort=-creatordate'], { cwd: projectRoot, timeout: 5000 });
     const tags = stdout.trim().split('\n').filter(Boolean);
@@ -358,7 +360,6 @@ async function getHealth(projectRoot: string): Promise<HealthResult> {
     checks.push({ label: 'Git repo accessible', pass: false });
   }
 
-  // Check: decisions.md
   const decisionsPath = join(projectRoot, '.agentctx', 'context', 'decisions.md');
   if (existsSync(decisionsPath)) {
     try {
@@ -374,29 +375,17 @@ async function getHealth(projectRoot: string): Promise<HealthResult> {
     } catch { /* ignore */ }
   }
 
-  return {
-    score: Math.min(score, 10),
-    max: 10,
-    checks,
-    recommendations,
-  };
+  return { score: Math.min(score, 10), max: 10, checks, recommendations };
 }
 
 // ── API: Activity ──────────────────────────────────────────────────────
-
-interface ActivityEvent {
-  time: string;
-  date: string;
-  message: string;
-  type: 'commit' | 'spec' | 'checkpoint' | 'module';
-}
 
 async function getActivity(projectRoot: string): Promise<{ events: ActivityEvent[] }> {
   const events: ActivityEvent[] = [];
 
   try {
     const { stdout } = await execFileAsync('git', [
-      'log', '--oneline', '--format=%ai %s', '-20'
+      'log', '--oneline', '--format=%ai %s', '-20',
     ], { cwd: projectRoot, timeout: 5000 });
 
     const lines = stdout.trim().split('\n').filter(Boolean);
@@ -405,7 +394,6 @@ async function getActivity(projectRoot: string): Promise<{ events: ActivityEvent
     const yesterday = new Date(now.getTime() - 86400000).toISOString().slice(0, 10);
 
     for (const line of lines) {
-      // Format: 2026-03-25 14:30:00 +0530 commit message
       const match = line.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}):\d{2}\s+\S+\s+(.+)$/);
       if (!match) continue;
 
@@ -415,7 +403,6 @@ async function getActivity(projectRoot: string): Promise<{ events: ActivityEvent
       else if (dateStr === yesterday) dateLabel = 'Yesterday';
       else dateLabel = dateStr;
 
-      // Determine type from message
       let type: ActivityEvent['type'] = 'commit';
       const msgLower = message.toLowerCase();
       if (msgLower.includes('spec') || msgLower.includes('rfc')) type = 'spec';
@@ -430,12 +417,6 @@ async function getActivity(projectRoot: string): Promise<{ events: ActivityEvent
 }
 
 // ── API: Context tree ──────────────────────────────────────────────────
-
-interface ContextFile {
-  name: string;
-  path: string;
-  tokens: number;
-}
 
 async function getContextFiles(projectRoot: string): Promise<ContextFile[]> {
   const contextDir = join(projectRoot, '.agentctx', 'context');
@@ -468,211 +449,481 @@ async function getContextFiles(projectRoot: string): Promise<ContextFile[]> {
 
 // ── Dashboard HTML ─────────────────────────────────────────────────────
 
-function getDashboardHTML(projectName: string): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHTML(projectName)} — Dashboard</title>
-  <style>
+function getCSS(): string {
+  return `
     * { margin: 0; padding: 0; box-sizing: border-box; }
+
     :root {
-      --bg: #0d1117; --surface: #161b22; --surface-2: #1c2333;
-      --border: #30363d; --text: #c9d1d9; --text-dim: #7d8590;
-      --accent: #58a6ff; --accent-dim: #1f6feb22; --green: #3fb950;
-      --yellow: #d29922; --red: #f85149;
+      --color-bg: #0d1117;
+      --color-surface: #161b22;
+      --color-surface-raised: #1c2333;
+      --color-border: #30363d;
+      --color-text-primary: #c9d1d9;
+      --color-text-secondary: #7d8590;
+      --color-primary: #58a6ff;
+      --color-primary-muted: #1f6feb22;
+      --color-success: #3fb950;
+      --color-warning: #d29922;
+      --color-error: #f85149;
+      --color-module: #bc8cff;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --space-16: 64px;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      --radius-sm: 4px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
     }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-bg);
+      color: var(--color-text-primary);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
 
     /* Header / Tab bar */
-    .header { display: flex; align-items: center; border-bottom: 1px solid var(--border); background: var(--surface); padding: 0 24px; flex-shrink: 0; }
-    .logo { font-size: 14px; font-weight: 600; color: var(--accent); margin-right: 32px; display: flex; align-items: center; gap: 8px; padding: 14px 0; letter-spacing: 0.3px; }
+    .header {
+      display: flex;
+      align-items: center;
+      border-bottom: 1px solid var(--color-border);
+      background: var(--color-surface);
+      padding: 0 var(--space-6);
+      flex-shrink: 0;
+    }
+    .logo {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-primary);
+      margin-right: var(--space-8);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+      padding: 14px 0;
+      letter-spacing: 0.3px;
+    }
     .logo svg { flex-shrink: 0; }
     .tabs { display: flex; gap: 0; }
-    .tab { padding: 14px 18px; font-size: 13px; color: var(--text-dim); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; font-weight: 500; user-select: none; }
-    .tab:hover { color: var(--text); background: var(--surface-2); }
-    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .live { width: 6px; height: 6px; background: var(--green); border-radius: 50%; display: inline-block; margin-left: 8px; animation: pulse 2s infinite; }
-    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .tab {
+      padding: 14px 18px;
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s ease-out, background 0.15s ease-out;
+      font-weight: 500;
+      user-select: none;
+    }
+    .tab:hover { color: var(--color-text-primary); background: var(--color-surface-raised); }
+    .tab:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+    .tab.active { color: var(--color-primary); border-bottom-color: var(--color-primary); }
+    .live {
+      width: 6px; height: 6px;
+      background: var(--color-success);
+      border-radius: 50%;
+      display: inline-block;
+      margin-left: var(--space-2);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    @media (prefers-reduced-motion: reduce) {
+      .live { animation: none; }
+      * { transition-duration: 0s !important; }
+    }
 
     /* Main content */
-    .main { flex: 1; overflow-y: auto; padding: 24px 32px; }
+    .main { flex: 1; overflow-y: auto; padding: var(--space-6) var(--space-8); }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
 
     /* Kanban (Specs tab) */
-    .kanban { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; min-height: 300px; }
-    .kanban-col { background: var(--surface); border-radius: 8px; padding: 12px; border: 1px solid var(--border); }
-    .kanban-col-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-    .kanban-col-title .count { background: var(--surface-2); border-radius: 10px; padding: 1px 7px; font-size: 11px; }
-    .spec-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 8px; cursor: pointer; transition: border-color 0.15s; }
-    .spec-card:hover { border-color: var(--accent); }
-    .spec-id { font-size: 11px; color: var(--accent); font-family: 'SF Mono', 'Fira Code', monospace; font-weight: 600; margin-bottom: 4px; }
-    .spec-title { font-size: 13px; font-weight: 500; margin-bottom: 6px; }
-    .spec-branch { font-size: 11px; color: var(--text-dim); font-family: 'SF Mono', 'Fira Code', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .spec-actions { margin-top: 8px; display: flex; gap: 6px; }
+    .kanban { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); min-height: 300px; }
+    .kanban-col {
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
+      padding: var(--space-3);
+      border: 1px solid var(--color-border);
+    }
+    .kanban-col-title {
+      font-size: 12px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--color-text-secondary);
+      margin-bottom: var(--space-3);
+      display: flex; align-items: center; gap: var(--space-2);
+    }
+    .kanban-col-title .count {
+      background: var(--color-surface-raised);
+      border-radius: 10px;
+      padding: 1px 7px;
+      font-size: 11px;
+    }
+    .spec-card {
+      background: var(--color-surface-raised);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-3);
+      margin-bottom: var(--space-2);
+      cursor: pointer;
+      transition: border-color 0.15s ease-out;
+    }
+    .spec-card:hover { border-color: var(--color-primary); }
+    .spec-card:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+    .spec-id {
+      font-size: 11px; color: var(--color-primary);
+      font-family: var(--font-mono); font-weight: 600;
+      margin-bottom: var(--space-1);
+    }
+    .spec-title { font-size: 13px; font-weight: 500; margin-bottom: var(--space-2); }
+    .spec-branch {
+      font-size: 11px; color: var(--color-text-secondary);
+      font-family: var(--font-mono);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .spec-priority { float: right; font-size: 10px; color: var(--color-text-secondary); }
+    .spec-actions { margin-top: var(--space-2); display: flex; gap: var(--space-2); }
 
     /* Buttons */
-    .btn { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border); font-size: 11px; cursor: pointer; transition: all 0.15s; background: var(--surface); color: var(--text); }
-    .btn:hover { border-color: var(--accent); color: var(--accent); }
-    .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .btn-primary:hover { opacity: 0.85; }
-    .btn-green { background: var(--green); color: #000; border-color: var(--green); }
-    .btn-green:hover { opacity: 0.85; }
-    .btn-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .btn-accent:hover { opacity: 0.85; }
-    .btn-lg { padding: 8px 20px; font-size: 13px; }
+    .btn {
+      padding: var(--space-1) 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--color-border);
+      font-size: 11px; cursor: pointer;
+      transition: border-color 0.15s ease-out, color 0.15s ease-out;
+      background: var(--color-surface);
+      color: var(--color-text-primary);
+      font-family: var(--font-sans);
+    }
+    .btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+    .btn-primary { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+    .btn-primary:hover { opacity: 0.85; color: #fff; }
+    .btn-success { background: var(--color-success); color: #0d1117; border-color: var(--color-success); }
+    .btn-success:hover { opacity: 0.85; color: #0d1117; }
+    .btn-lg { padding: var(--space-2) var(--space-5); font-size: 13px; }
 
     /* Table (Modules tab) */
     .data-table { width: 100%; border-collapse: collapse; }
-    .data-table th { text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding: 8px 12px; border-bottom: 1px solid var(--border); }
-    .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
-    .data-table tr { cursor: pointer; transition: background 0.1s; }
-    .data-table tbody tr:hover { background: var(--surface); }
-    .data-table .stale { color: var(--yellow); }
-    .data-table .mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
-    .module-detail { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 16px; margin: 4px 0 12px; }
-    .module-detail h4 { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .data-table th {
+      text-align: left; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--color-text-secondary);
+      padding: var(--space-2) var(--space-3);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .data-table td {
+      padding: 10px var(--space-3);
+      border-bottom: 1px solid var(--color-border);
+      font-size: 13px;
+    }
+    .data-table tr { cursor: pointer; transition: background 0.1s ease-out; }
+    .data-table tbody tr:hover { background: var(--color-surface); }
+    .data-table .stale { color: var(--color-warning); }
+    .data-table .mono { font-family: var(--font-mono); font-size: 12px; }
+    .module-detail {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      margin: var(--space-1) 0 var(--space-3);
+    }
+    .module-detail h4 {
+      font-size: 12px; color: var(--color-text-secondary);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: var(--space-2);
+    }
     .module-detail ul { list-style: none; padding: 0; }
-    .module-detail li { font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace; padding: 2px 0; color: var(--text); }
-    .module-detail li::before { content: ''; display: none; }
+    .module-detail li {
+      font-size: 12px; font-family: var(--font-mono);
+      padding: 2px 0; color: var(--color-text-primary);
+    }
 
     /* Health tab */
-    .health-grid { display: grid; grid-template-columns: 240px 1fr; gap: 32px; }
+    .health-grid { display: grid; grid-template-columns: 240px 1fr; gap: var(--space-8); }
     .health-score { display: flex; flex-direction: column; align-items: center; justify-content: center; }
     .score-ring { position: relative; width: 160px; height: 160px; }
     .score-ring svg { transform: rotate(-90deg); }
-    .score-ring .bg { fill: none; stroke: var(--surface-2); stroke-width: 10; }
-    .score-ring .fg { fill: none; stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.8s ease, stroke 0.3s; }
+    .score-ring .bg { fill: none; stroke: var(--color-surface-raised); stroke-width: 10; }
+    .score-ring .fg { fill: none; stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.8s ease-out, stroke 0.3s ease-out; }
     .score-number { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 36px; font-weight: 700; }
-    .score-label { font-size: 13px; color: var(--text-dim); margin-top: 8px; }
-    .health-checks { }
-    .check-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
-    .check-icon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
-    .check-icon.pass { background: #3fb95022; color: var(--green); }
-    .check-icon.fail { background: #f8514922; color: var(--red); }
-    .check-detail { font-size: 11px; color: var(--text-dim); margin-left: auto; }
-    .recommendations { margin-top: 24px; }
-    .recommendations h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
-    .rec-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; cursor: pointer; transition: border-color 0.15s; }
-    .rec-item:hover { border-color: var(--accent); }
-    .rec-item::after { content: 'Copy'; font-family: -apple-system, sans-serif; font-size: 10px; color: var(--text-dim); margin-left: auto; }
-    .rec-item.copied::after { content: 'Copied!'; color: var(--green); }
+    .score-label { font-size: 13px; color: var(--color-text-secondary); margin-top: var(--space-2); }
+    .check-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: var(--space-2) 0;
+      border-bottom: 1px solid var(--color-border);
+      font-size: 13px;
+    }
+    .check-icon {
+      width: 20px; height: 20px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; flex-shrink: 0;
+    }
+    .check-icon.pass { background: #3fb95022; color: var(--color-success); }
+    .check-icon.fail { background: #f8514922; color: var(--color-error); }
+    .check-detail { font-size: 11px; color: var(--color-text-secondary); margin-left: auto; }
+    .recommendations { margin-top: var(--space-6); }
+    .recommendations h3 { font-size: 14px; font-weight: 600; margin-bottom: var(--space-3); }
+    .rec-item {
+      display: flex; align-items: center; gap: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      margin-bottom: var(--space-2);
+      font-size: 13px; font-family: var(--font-mono);
+      cursor: pointer; transition: border-color 0.15s ease-out;
+    }
+    .rec-item:hover { border-color: var(--color-primary); }
+    .rec-item::after {
+      content: 'Copy'; font-family: var(--font-sans);
+      font-size: 10px; color: var(--color-text-secondary); margin-left: auto;
+    }
+    .rec-item.copied::after { content: 'Copied!'; color: var(--color-success); }
 
     /* Context tab */
     .context-grid { display: grid; grid-template-columns: 280px 1fr; gap: 0; height: calc(100vh - 120px); }
-    .context-tree { border-right: 1px solid var(--border); padding: 12px; overflow-y: auto; }
-    .context-viewer { padding: 24px; overflow-y: auto; }
-    .ctx-file { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 13px; transition: all 0.1s; }
-    .ctx-file:hover { background: var(--surface); }
-    .ctx-file.active { background: var(--accent-dim); color: var(--accent); }
-    .ctx-file .tokens { font-size: 11px; color: var(--text-dim); margin-left: auto; font-family: 'SF Mono', 'Fira Code', monospace; }
-    .ctx-file svg { flex-shrink: 0; color: var(--text-dim); }
-    .ctx-file.active svg { color: var(--accent); }
+    .context-tree { border-right: 1px solid var(--color-border); padding: var(--space-3); overflow-y: auto; }
+    .context-viewer { padding: var(--space-6); overflow-y: auto; }
+    .ctx-file {
+      display: flex; align-items: center; gap: var(--space-2);
+      padding: var(--space-2) 10px;
+      border-radius: 5px; cursor: pointer;
+      font-size: 13px; transition: background 0.1s ease-out;
+    }
+    .ctx-file:hover { background: var(--color-surface); }
+    .ctx-file.active { background: var(--color-primary-muted); color: var(--color-primary); }
+    .ctx-file .tokens {
+      font-size: 11px; color: var(--color-text-secondary);
+      margin-left: auto; font-family: var(--font-mono);
+    }
+    .ctx-file svg { flex-shrink: 0; color: var(--color-text-secondary); }
+    .ctx-file.active svg { color: var(--color-primary); }
 
     /* Activity tab */
     .timeline { max-width: 700px; }
-    .timeline-day { margin-bottom: 24px; }
-    .timeline-day-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
-    .timeline-event { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; }
-    .event-icon { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; }
-    .event-icon.commit { background: #58a6ff22; color: var(--accent); }
-    .event-icon.spec { background: #3fb95022; color: var(--green); }
-    .event-icon.checkpoint { background: #d2992222; color: var(--yellow); }
-    .event-icon.module { background: #bc8cff22; color: #bc8cff; }
+    .timeline-day { margin-bottom: var(--space-6); }
+    .timeline-day-label {
+      font-size: 12px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      color: var(--color-text-secondary);
+      margin-bottom: 10px; padding-bottom: var(--space-2);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .timeline-event { display: flex; align-items: flex-start; gap: var(--space-3); padding: var(--space-2) 0; }
+    .event-icon {
+      width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; font-size: 13px;
+    }
+    .event-icon.commit { background: #58a6ff22; color: var(--color-primary); }
+    .event-icon.spec { background: #3fb95022; color: var(--color-success); }
+    .event-icon.checkpoint { background: #d2992222; color: var(--color-warning); }
+    .event-icon.module { background: #bc8cff22; color: var(--color-module); }
     .event-message { font-size: 13px; line-height: 1.5; }
-    .event-time { font-size: 11px; color: var(--text-dim); font-family: 'SF Mono', 'Fira Code', monospace; margin-left: auto; flex-shrink: 0; }
+    .event-time {
+      font-size: 11px; color: var(--color-text-secondary);
+      font-family: var(--font-mono); margin-left: auto; flex-shrink: 0;
+    }
 
     /* Modal / Slideout */
-    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 50; }
+    .modal-overlay {
+      display: none; position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(1, 4, 9, 0.6);
+      z-index: 50;
+    }
     .modal-overlay.show { display: block; }
-    .modal { position: fixed; top: 0; right: 0; width: 60%; max-width: 700px; height: 100%; background: var(--bg); border-left: 1px solid var(--border); z-index: 51; overflow-y: auto; padding: 24px 32px; transform: translateX(100%); transition: transform 0.25s ease; }
+    .modal {
+      position: fixed; top: 0; right: 0;
+      width: 60%; max-width: 700px; height: 100%;
+      background: var(--color-bg);
+      border-left: 1px solid var(--color-border);
+      z-index: 51; overflow-y: auto;
+      padding: var(--space-6) var(--space-8);
+      transform: translateX(100%);
+      transition: transform 0.25s ease-out;
+    }
     .modal-overlay.show .modal { transform: translateX(0); }
-    .modal-close { position: absolute; top: 16px; right: 16px; background: none; border: 1px solid var(--border); color: var(--text-dim); width: 28px; height: 28px; border-radius: 4px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; }
-    .modal-close:hover { border-color: var(--accent); color: var(--accent); }
+    .modal-close {
+      position: absolute; top: var(--space-4); right: var(--space-4);
+      background: none; border: 1px solid var(--color-border);
+      color: var(--color-text-secondary);
+      width: 28px; height: 28px;
+      border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal-close:hover { border-color: var(--color-primary); color: var(--color-primary); }
+    .modal-close:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 
     /* Markdown rendering */
     .md { line-height: 1.7; font-size: 15px; }
-    .md h1 { font-size: 24px; font-weight: 600; margin: 20px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
-    .md h2 { font-size: 20px; font-weight: 600; margin: 16px 0 10px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
-    .md h3 { font-size: 16px; font-weight: 600; margin: 14px 0 8px; }
+    .md h1 { font-size: 24px; font-weight: 600; margin: 20px 0 var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--color-border); }
+    .md h2 { font-size: 20px; font-weight: 600; margin: var(--space-4) 0 10px; padding-bottom: var(--space-1); border-bottom: 1px solid var(--color-border); }
+    .md h3 { font-size: 16px; font-weight: 600; margin: 14px 0 var(--space-2); }
     .md p { margin: 0 0 10px; }
-    .md code { background: var(--surface-2); padding: 2px 6px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; }
-    .md pre { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; overflow-x: auto; margin: 0 0 14px; }
+    .md code { background: var(--color-surface-raised); padding: 2px var(--space-2); border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font-mono); }
+    .md pre { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 14px; overflow-x: auto; margin: 0 0 14px; }
     .md pre code { background: none; padding: 0; font-size: 13px; line-height: 1.5; }
     .md ul, .md ol { margin: 0 0 10px; padding-left: 22px; }
     .md li { margin: 3px 0; }
-    .md blockquote { border-left: 3px solid var(--accent); padding: 4px 14px; color: var(--text-dim); margin: 0 0 10px; }
+    .md blockquote { border-left: 3px solid var(--color-primary); padding: var(--space-1) 14px; color: var(--color-text-secondary); margin: 0 0 10px; }
     .md table { width: 100%; border-collapse: collapse; margin: 0 0 14px; }
-    .md th, .md td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
-    .md th { background: var(--surface); font-weight: 600; }
+    .md th, .md td { border: 1px solid var(--color-border); padding: var(--space-2) 10px; text-align: left; }
+    .md th { background: var(--color-surface); font-weight: 600; }
+
+    /* Status badge */
+    .badge {
+      display: inline-block;
+      padding: 2px var(--space-2);
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-draft { background: #7d859022; color: var(--color-text-secondary); }
+    .badge-approved { background: #58a6ff22; color: var(--color-primary); }
+    .badge-in-progress { background: #d2992222; color: var(--color-warning); }
+    .badge-completed { background: #3fb95022; color: var(--color-success); }
 
     /* Empty state */
-    .empty-state { text-align: center; padding: 60px 24px; color: var(--text-dim); }
-    .empty-state h3 { font-size: 18px; color: var(--text); margin-bottom: 8px; }
-    .empty-state p { font-size: 14px; max-width: 400px; margin: 0 auto 16px; line-height: 1.6; }
-    .empty-state code { background: var(--surface-2); padding: 4px 10px; border-radius: 4px; font-size: 13px; font-family: 'SF Mono', 'Fira Code', monospace; }
+    .empty-state { text-align: center; padding: var(--space-16) var(--space-6); color: var(--color-text-secondary); }
+    .empty-state h3 { font-size: 18px; color: var(--color-text-primary); margin-bottom: var(--space-2); }
+    .empty-state p { font-size: 14px; max-width: 400px; margin: 0 auto var(--space-4); line-height: 1.6; }
+    .empty-state code { background: var(--color-surface-raised); padding: var(--space-1) 10px; border-radius: var(--radius-sm); font-size: 13px; font-family: var(--font-mono); }
 
     /* Toolbar */
-    .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .toolbar { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); }
     .toolbar h2 { font-size: 18px; font-weight: 600; flex: 1; }
 
     /* Toast */
-    .toast { position: fixed; bottom: 20px; right: 20px; background: var(--green); color: #000; padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 500; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 60; }
+    .toast {
+      position: fixed; bottom: 20px; right: 20px;
+      background: var(--color-success); color: #0d1117;
+      padding: var(--space-2) var(--space-4);
+      border-radius: var(--radius-md);
+      font-size: 13px; font-weight: 500;
+      opacity: 0; transition: opacity 0.2s ease-out;
+      pointer-events: none; z-index: 60;
+    }
     .toast.show { opacity: 1; }
 
+    /* Form fields */
+    .form-input {
+      width: 100%;
+      padding: var(--space-2) var(--space-3);
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      color: var(--color-text-primary);
+      font-size: 14px;
+      font-family: var(--font-sans);
+      outline: none;
+    }
+    .form-input:focus { border-color: var(--color-primary); }
+    .form-label {
+      font-size: 13px;
+      color: var(--color-text-secondary);
+      display: block;
+      margin-bottom: var(--space-1);
+    }
+    .form-group { margin-bottom: var(--space-3); }
+    .form-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
+
+    /* Editor textarea */
+    .spec-editor {
+      width: 100%;
+      height: 60vh;
+      background: var(--color-bg);
+      color: var(--color-text-primary);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.6;
+      resize: none;
+      outline: none;
+      tab-size: 2;
+    }
+    .spec-editor:focus { border-color: var(--color-primary); }
+
+    /* Modal header bar */
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-4);
+      padding-bottom: var(--space-3);
+      border-bottom: 1px solid var(--color-border);
+    }
+    .modal-header-left { display: flex; align-items: center; gap: 10px; }
+    .modal-header-left .path { font-size: 13px; color: var(--color-text-secondary); font-family: var(--font-mono); }
+    .modal-header-right { display: flex; gap: var(--space-2); }
+
+    /* Scrollbar */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-  </style>
-</head>
-<body>
+    ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+  `;
+}
+
+function getBodyHTML(projectName: string): string {
+  const safeProjectName = escapeHTML(projectName);
+  return `
   <div class="header">
     <div class="logo">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="14" height="14" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M5 5.5h6M5 8h4M5 10.5h5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-      ${escapeHTML(projectName)}
-      <span class="live" title="Live reload"></span>
+      ${safeProjectName}
+      <span class="live" title="Live reload active"></span>
     </div>
-    <div class="tabs">
-      <div class="tab active" data-tab="specs">Specs</div>
-      <div class="tab" data-tab="modules">Modules</div>
-      <div class="tab" data-tab="context">Context</div>
-      <div class="tab" data-tab="health">Health</div>
-      <div class="tab" data-tab="activity">Activity</div>
+    <div class="tabs" role="tablist">
+      <div class="tab active" data-tab="specs" role="tab" tabindex="0">Specs</div>
+      <div class="tab" data-tab="modules" role="tab" tabindex="0">Modules</div>
+      <div class="tab" data-tab="context" role="tab" tabindex="0">Context</div>
+      <div class="tab" data-tab="health" role="tab" tabindex="0">Health</div>
+      <div class="tab" data-tab="activity" role="tab" tabindex="0">Activity</div>
     </div>
   </div>
 
   <div class="main">
-    <div class="tab-panel active" id="panel-specs">
+    <div class="tab-panel active" id="panel-specs" role="tabpanel">
       <div class="toolbar">
         <h2>Spec Board</h2>
       </div>
       <div id="specs-content"></div>
     </div>
 
-    <div class="tab-panel" id="panel-modules">
+    <div class="tab-panel" id="panel-modules" role="tabpanel">
       <div class="toolbar">
         <h2>Modules</h2>
-        <button class="btn btn-primary" onclick="runSync()">Sync</button>
+        <button class="btn btn-primary" id="btn-sync-modules">Sync</button>
       </div>
       <div id="modules-content"></div>
     </div>
 
-    <div class="tab-panel" id="panel-context">
+    <div class="tab-panel" id="panel-context" role="tabpanel">
       <div id="context-content"></div>
     </div>
 
-    <div class="tab-panel" id="panel-health">
+    <div class="tab-panel" id="panel-health" role="tabpanel">
       <div class="toolbar">
         <h2>Project Health</h2>
-        <button class="btn" onclick="loadHealth()">Run Doctor</button>
-        <button class="btn btn-primary" onclick="runSync()">Run Sync</button>
+        <button class="btn" id="btn-run-doctor">Run Doctor</button>
+        <button class="btn btn-primary" id="btn-sync-health">Run Sync</button>
       </div>
       <div id="health-content"></div>
     </div>
 
-    <div class="tab-panel" id="panel-activity">
+    <div class="tab-panel" id="panel-activity" role="tabpanel">
       <div class="toolbar">
         <h2>Activity</h2>
       </div>
@@ -680,102 +931,241 @@ function getDashboardHTML(projectName: string): string {
     </div>
   </div>
 
-  <!-- Modal for spec detail -->
   <div class="modal-overlay" id="modal-overlay">
     <div class="modal" id="modal">
-      <button class="modal-close" onclick="closeModal()">&times;</button>
+      <button class="modal-close" id="modal-close-btn" aria-label="Close">&times;</button>
       <div id="modal-content"></div>
     </div>
   </div>
 
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  `;
+}
 
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script>
+function getJS(): string {
+  return `
     // ── State ──
-    let expandedModule = null;
+    var expandedModule = null;
+    var currentEditPath = null;
 
     // ── Utils ──
-    const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    function esc(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 
     function showToast(msg) {
-      const t = document.getElementById('toast');
+      var t = document.getElementById('toast');
       t.textContent = msg;
       t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 2000);
+      setTimeout(function() { t.classList.remove('show'); }, 2000);
     }
 
     function closeModal() {
       document.getElementById('modal-overlay').classList.remove('show');
     }
 
-    document.getElementById('modal-overlay').addEventListener('click', (e) => {
+    function badgeHTML(status) {
+      var cls = 'badge badge-' + status;
+      return '<span class="' + cls + '">' + esc(status) + '</span>';
+    }
+
+    // ── Modal events ──
+    document.getElementById('modal-overlay').addEventListener('click', function(e) {
       if (e.target === e.currentTarget) closeModal();
     });
 
-    document.addEventListener('keydown', (e) => {
+    document.getElementById('modal-close-btn').addEventListener('click', function() {
+      closeModal();
+    });
+
+    document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') closeModal();
     });
 
+    // ── Toolbar button events ──
+    document.getElementById('btn-sync-modules').addEventListener('click', function() { runSync(); });
+    document.getElementById('btn-run-doctor').addEventListener('click', function() { loadHealth(); });
+    document.getElementById('btn-sync-health').addEventListener('click', function() { runSync(); });
+
     // ── Tabs ──
-    document.querySelectorAll('.tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
-        // Lazy load
-        if (tab.dataset.tab === 'specs') loadSpecs();
-        else if (tab.dataset.tab === 'modules') loadModules();
-        else if (tab.dataset.tab === 'context') loadContext();
-        else if (tab.dataset.tab === 'health') loadHealth();
-        else if (tab.dataset.tab === 'activity') loadActivity();
+    document.querySelectorAll('.tab').forEach(function(tab) {
+      tab.addEventListener('click', function() { switchTab(tab); });
+      tab.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchTab(tab); }
       });
+    });
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+      tab.classList.add('active');
+      document.getElementById('panel-' + tab.dataset.tab).classList.add('active');
+      if (tab.dataset.tab === 'specs') loadSpecs();
+      else if (tab.dataset.tab === 'modules') loadModules();
+      else if (tab.dataset.tab === 'context') loadContext();
+      else if (tab.dataset.tab === 'health') loadHealth();
+      else if (tab.dataset.tab === 'activity') loadActivity();
+    }
+
+    // ── Event delegation ──
+    // All click handlers are routed through delegation on document.body
+    document.addEventListener('click', function(e) {
+      var target = e.target;
+
+      // Spec card click
+      var card = target.closest('[data-spec-path]');
+      if (card && !target.closest('[data-approve]') && !target.closest('[data-implement]')) {
+        viewSpec(card.dataset.specPath);
+        return;
+      }
+
+      // Approve button on kanban card
+      var approveBtn = target.closest('[data-approve]');
+      if (approveBtn) {
+        e.stopPropagation();
+        approveSpec(approveBtn.dataset.approve);
+        return;
+      }
+
+      // Implement button on kanban card
+      var implementBtn = target.closest('[data-implement]');
+      if (implementBtn) {
+        e.stopPropagation();
+        showImplement(implementBtn.dataset.implementId, implementBtn.dataset.implement);
+        return;
+      }
+
+      // Modal action: edit spec
+      var editBtn = target.closest('[data-edit-spec]');
+      if (editBtn) {
+        editSpec(editBtn.dataset.editSpec);
+        return;
+      }
+
+      // Modal action: save spec
+      var saveBtn = target.closest('[data-save-spec]');
+      if (saveBtn) {
+        saveSpec(saveBtn.dataset.saveSpec);
+        return;
+      }
+
+      // Modal action: cancel edit (return to view)
+      var cancelEditBtn = target.closest('[data-cancel-edit]');
+      if (cancelEditBtn) {
+        viewSpec(cancelEditBtn.dataset.cancelEdit);
+        return;
+      }
+
+      // Modal action: approve from modal
+      var modalApproveBtn = target.closest('[data-modal-approve]');
+      if (modalApproveBtn) {
+        approveSpec(modalApproveBtn.dataset.modalApprove);
+        return;
+      }
+
+      // Modal action: implement from modal
+      var modalImplementBtn = target.closest('[data-modal-implement]');
+      if (modalImplementBtn) {
+        showImplement(modalImplementBtn.dataset.modalImplementId, modalImplementBtn.dataset.modalImplement);
+        return;
+      }
+
+      // Create spec buttons
+      var createSpecBtn = target.closest('[data-create-type]');
+      if (createSpecBtn) {
+        showCreateForm(createSpecBtn.dataset.createType);
+        return;
+      }
+
+      // Create spec submit
+      var submitCreateBtn = target.closest('[data-submit-create]');
+      if (submitCreateBtn) {
+        createSpec(submitCreateBtn.dataset.submitCreate);
+        return;
+      }
+
+      // Cancel create
+      var cancelCreateBtn = target.closest('[data-cancel-create]');
+      if (cancelCreateBtn) {
+        closeModal();
+        return;
+      }
+
+      // Module row toggle
+      var moduleRow = target.closest('[data-module-name]');
+      if (moduleRow) {
+        toggleModule(moduleRow.dataset.moduleName);
+        return;
+      }
+
+      // Context file click
+      var ctxFile = target.closest('[data-ctx-path]');
+      if (ctxFile) {
+        viewContextFile(ctxFile, ctxFile.dataset.ctxPath);
+        return;
+      }
+
+      // Recommendation copy
+      var recItem = target.closest('[data-rec]');
+      if (recItem) {
+        copyRec(recItem, recItem.dataset.rec);
+        return;
+      }
     });
 
     // ── Specs ──
     async function loadSpecs() {
-      const res = await fetch('/api/specs');
-      const data = await res.json();
-      const el = document.getElementById('specs-content');
+      var res = await fetch('/api/specs');
+      var data = await res.json();
+      var el = document.getElementById('specs-content');
 
-      // Create buttons always shown
-      let topBar = '<div style="display:flex;gap:8px;margin-bottom:16px">';
-      topBar += '<button class="btn btn-accent" onclick="showCreateForm(\\'spec\\')">+ New Spec</button>';
-      topBar += '<button class="btn" onclick="showCreateForm(\\'brd\\')">+ New BRD</button>';
-      topBar += '</div>';
+      var topBar = '<div style="display:flex;gap:8px;margin-bottom:16px">' +
+        '<button class="btn btn-primary" data-create-type="spec">+ New Spec</button>' +
+        '<button class="btn" data-create-type="brd">+ New BRD</button>' +
+        '</div>';
 
       if (data.specs.length === 0) {
         el.innerHTML = topBar + '<div class="empty-state"><h3>No specs yet</h3><p>Create your first spec or BRD to start planning.</p></div>';
         return;
       }
 
-      const cols = { draft: [], approved: [], 'in-progress': [], completed: [] };
-      for (const s of data.specs) {
+      var cols = { draft: [], approved: [], 'in-progress': [], completed: [] };
+      for (var i = 0; i < data.specs.length; i++) {
+        var s = data.specs[i];
         (cols[s.status] || cols.draft).push(s);
       }
 
-      let html = '<div class="kanban">';
-      const colMeta = [
+      var html = '<div class="kanban">';
+      var colMeta = [
         { key: 'draft', label: 'Draft' },
         { key: 'approved', label: 'Approved' },
         { key: 'in-progress', label: 'In Progress' },
-        { key: 'completed', label: 'Completed' },
+        { key: 'completed', label: 'Completed' }
       ];
 
-      for (const col of colMeta) {
-        const items = cols[col.key];
-        html += '<div class="kanban-col"><div class="kanban-col-title">' + esc(col.label) + ' <span class="count">' + items.length + '</span></div>';
-        for (const s of items) {
-          html += '<div class="spec-card" onclick="viewSpec(\\'' + esc(s.path) + '\\')">';
-          html += '<div class="spec-id">#' + esc(s.id) + (s.priority ? ' <span style="float:right;font-size:10px;color:var(--text-dim)">' + esc(s.priority) + '</span>' : '') + '</div>';
-          html += '<div class="spec-title">' + esc(s.title) + '</div>';
-          html += '<div class="spec-branch">' + esc(s.branch) + '</div>';
-          if (s.status === 'draft') {
-            html += '<div class="spec-actions"><button class="btn btn-green" onclick="event.stopPropagation(); approveSpec(\\'' + esc(s.path) + '\\')">Approve</button></div>';
-          } else if (s.status === 'approved') {
-            html += '<div class="spec-actions"><button class="btn" onclick="event.stopPropagation(); showImplement(\\'' + esc(s.id) + '\\', \\'' + esc(s.branch) + '\\')">Implement</button></div>';
+      for (var ci = 0; ci < colMeta.length; ci++) {
+        var col = colMeta[ci];
+        var items = cols[col.key];
+        html += '<div class="kanban-col"><div class="kanban-col-title">' +
+          esc(col.label) + ' <span class="count">' + items.length + '</span></div>';
+
+        for (var si = 0; si < items.length; si++) {
+          var spec = items[si];
+          html += '<div class="spec-card" data-spec-path="' + esc(spec.path) + '" tabindex="0">';
+          html += '<div class="spec-id">#' + esc(spec.id);
+          if (spec.priority) {
+            html += '<span class="spec-priority">' + esc(spec.priority) + '</span>';
           }
+          html += '</div>';
+          html += '<div class="spec-title">' + esc(spec.title) + '</div>';
+          html += '<div class="spec-branch">' + esc(spec.branch) + '</div>';
+
+          if (spec.status === 'draft') {
+            html += '<div class="spec-actions"><button class="btn btn-success" data-approve="' + esc(spec.path) + '">Approve</button></div>';
+          } else if (spec.status === 'approved') {
+            html += '<div class="spec-actions"><button class="btn" data-implement="' + esc(spec.branch) + '" data-implement-id="' + esc(spec.id) + '">Implement</button></div>';
+          }
+
           html += '</div>';
         }
         html += '</div>';
@@ -785,28 +1175,36 @@ function getDashboardHTML(projectName: string): string {
     }
 
     function showCreateForm(type) {
-      const label = type === 'brd' ? 'Business Requirement' : 'Feature Spec';
-      document.getElementById('modal-content').innerHTML =
-        '<h2 style="margin-bottom:16px">New ' + label + '</h2>' +
-        '<div style="margin-bottom:12px"><label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px">Title</label>' +
-        '<input id="create-title" type="text" placeholder="e.g., Add user authentication" style="width:100%;padding:8px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px;outline:none" autofocus></div>' +
-        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
-        '<button class="btn" onclick="closeModal()">Cancel</button>' +
-        '<button class="btn btn-accent" onclick="createSpec(\\'' + type + '\\')">Create</button></div>';
+      var label = type === 'brd' ? 'Business Requirement' : 'Feature Spec';
+      var mc = document.getElementById('modal-content');
+      mc.innerHTML =
+        '<h2 style="margin-bottom:16px">New ' + esc(label) + '</h2>' +
+        '<div class="form-group">' +
+          '<label class="form-label">Title</label>' +
+          '<input id="create-title" type="text" class="form-input" placeholder="e.g., Add user authentication" autofocus>' +
+        '</div>' +
+        '<div class="form-actions">' +
+          '<button class="btn" data-cancel-create>Cancel</button>' +
+          '<button class="btn btn-primary" data-submit-create="' + esc(type) + '">Create</button>' +
+        '</div>';
       document.getElementById('modal-overlay').classList.add('show');
-      setTimeout(() => document.getElementById('create-title')?.focus(), 100);
+      setTimeout(function() {
+        var input = document.getElementById('create-title');
+        if (input) input.focus();
+      }, 100);
     }
 
     async function createSpec(type) {
-      const title = document.getElementById('create-title')?.value;
+      var titleEl = document.getElementById('create-title');
+      var title = titleEl ? titleEl.value : '';
       if (!title) { showToast('Title required'); return; }
       try {
-        const res = await fetch('/api/spec/create', {
+        var res = await fetch('/api/spec/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type, title }),
+          body: JSON.stringify({ type: type, title: title })
         });
-        const data = await res.json();
+        var data = await res.json();
         if (data.ok) {
           showToast((type === 'brd' ? 'BRD' : 'Spec') + ' #' + data.id + ' created');
           closeModal();
@@ -814,105 +1212,114 @@ function getDashboardHTML(projectName: string): string {
         } else {
           showToast(data.error || 'Failed');
         }
-      } catch { showToast('Failed to create'); }
+      } catch (err) { showToast('Failed to create'); }
     }
-
-    let currentEditPath = null;
 
     async function viewSpec(path) {
       try {
-        const res = await fetch('/api/spec?path=' + encodeURIComponent(path));
-        const md = await res.text();
+        var res = await fetch('/api/spec?path=' + encodeURIComponent(path));
+        var md = await res.text();
         currentEditPath = path;
 
         // Parse status from frontmatter
-        const statusMatch = md.match(/^---[\\s\\S]*?status:\\s*(\\w[\\w-]*)/);
-        const status = statusMatch ? statusMatch[1] : 'draft';
-        const idMatch = md.match(/^---[\\s\\S]*?id:\\s*"?(\\d+)"?/);
-        const specId = idMatch ? idMatch[1] : '';
+        var statusMatch = md.match(/^---[\\s\\S]*?status:\\s*(\\w[\\w-]*)/);
+        var status = statusMatch ? statusMatch[1] : 'draft';
+        var idMatch = md.match(/^---[\\s\\S]*?id:\\s*"?(\\d+)"?/);
+        var specId = idMatch ? idMatch[1] : '';
 
-        // Build status-aware action bar
-        let actions = '<button class="btn" onclick="editSpec(\\'' + esc(path) + '\\')">Edit</button>';
+        // Build action buttons based on status
+        var actions = '<button class="btn" data-edit-spec="' + esc(path) + '">Edit</button>';
 
         if (status === 'draft') {
-          actions += ' <button class="btn btn-green" onclick="approveSpec(\\'' + esc(path) + '\\')">Approve & Start</button>';
+          actions += ' <button class="btn btn-success" data-modal-approve="' + esc(path) + '">Approve</button>';
         } else if (status === 'approved') {
-          actions += ' <button class="btn btn-accent" onclick="showImplement(\\'' + esc(specId) + '\\', \\'feat/' + esc(specId) + '\\')">Implement</button>';
+          actions += ' <button class="btn btn-primary" data-modal-implement="feat/' + esc(specId) + '" data-modal-implement-id="' + esc(specId) + '">Implement</button>';
         } else if (status === 'in-progress') {
-          actions += ' <span style="color:var(--yellow);font-size:12px;margin-left:8px">In Progress</span>';
+          actions += ' <span style="color:var(--color-warning);font-size:12px;margin-left:8px">In Progress</span>';
         } else if (status === 'completed') {
-          actions += ' <span style="color:var(--green);font-size:12px;margin-left:8px">Completed</span>';
+          actions += ' <span style="color:var(--color-success);font-size:12px;margin-left:8px">Completed</span>';
         }
 
-        // Status badge
-        const badgeColor = status === 'draft' ? 'var(--text-dim)' : status === 'approved' ? 'var(--accent)' : status === 'in-progress' ? 'var(--yellow)' : 'var(--green)';
-        const badge = '<span style="background:' + badgeColor + '22;color:' + badgeColor + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">' + status + '</span>';
-
-        document.getElementById('modal-content').innerHTML =
-          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)">' +
-            '<div style="display:flex;align-items:center;gap:10px">' +
-              '<span style="font-size:13px;color:var(--text-dim);font-family:monospace">' + esc(path) + '</span>' +
-              badge +
+        var mc = document.getElementById('modal-content');
+        mc.innerHTML =
+          '<div class="modal-header">' +
+            '<div class="modal-header-left">' +
+              '<span class="path">' + esc(path) + '</span>' +
+              badgeHTML(status) +
             '</div>' +
-            '<div style="display:flex;gap:8px">' + actions + '</div>' +
+            '<div class="modal-header-right">' + actions + '</div>' +
           '</div>' +
           '<div class="md" style="max-height:60vh;overflow-y:auto">' + marked.parse(md) + '</div>';
 
         document.getElementById('modal-overlay').classList.add('show');
-      } catch {
+      } catch (err) {
         showToast('Could not load spec');
       }
     }
 
     async function editSpec(path) {
       try {
-        const res = await fetch('/api/spec?path=' + encodeURIComponent(path));
-        const content = await res.text();
-        document.getElementById('modal-content').innerHTML =
-          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
-          '<span style="font-size:12px;color:var(--text-dim);font-family:monospace">' + esc(path) + '</span>' +
-          '<div style="display:flex;gap:8px"><button class="btn" onclick="viewSpec(\\'' + esc(path) + '\\')">Cancel</button>' +
-          '<button class="btn btn-accent" onclick="saveSpec(\\'' + esc(path) + '\\')">Save</button></div></div>' +
-          '<textarea id="spec-editor" style="width:100%;height:60vh;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:16px;font-family:\\'SF Mono\\',monospace;font-size:13px;line-height:1.6;resize:none;outline:none;tab-size:2"></textarea>';
+        var res = await fetch('/api/spec?path=' + encodeURIComponent(path));
+        var content = await res.text();
+        var mc = document.getElementById('modal-content');
+        mc.innerHTML =
+          '<div class="modal-header">' +
+            '<div class="modal-header-left"><span class="path">' + esc(path) + '</span></div>' +
+            '<div class="modal-header-right">' +
+              '<button class="btn" data-cancel-edit="' + esc(path) + '">Cancel</button>' +
+              '<button class="btn btn-primary" data-save-spec="' + esc(path) + '">Save</button>' +
+            '</div>' +
+          '</div>' +
+          '<textarea id="spec-editor" class="spec-editor"></textarea>';
         document.getElementById('spec-editor').value = content;
-        document.getElementById('spec-editor').addEventListener('keydown', (e) => {
-          if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveSpec(path); }
-          if (e.key === 'Tab') { e.preventDefault(); const s = e.target.selectionStart; e.target.value = e.target.value.substring(0,s) + '  ' + e.target.value.substring(e.target.selectionEnd); e.target.selectionStart = e.target.selectionEnd = s + 2; }
+        document.getElementById('spec-editor').addEventListener('keydown', function(e) {
+          if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            saveSpec(path);
+          }
+          if (e.key === 'Tab') {
+            e.preventDefault();
+            var start = e.target.selectionStart;
+            e.target.value = e.target.value.substring(0, start) + '  ' + e.target.value.substring(e.target.selectionEnd);
+            e.target.selectionStart = e.target.selectionEnd = start + 2;
+          }
         });
-      } catch { showToast('Could not load spec'); }
+      } catch (err) { showToast('Could not load spec'); }
     }
 
     async function saveSpec(path) {
-      const content = document.getElementById('spec-editor')?.value;
+      var editor = document.getElementById('spec-editor');
+      var content = editor ? editor.value : '';
       if (!content) return;
       try {
-        const res = await fetch('/api/file/save?path=' + encodeURIComponent(path), { method: 'POST', body: content });
+        var res = await fetch('/api/file/save?path=' + encodeURIComponent(path), { method: 'POST', body: content });
         if (res.ok) { showToast('Saved'); viewSpec(path); loadSpecs(); }
         else { showToast('Save failed'); }
-      } catch { showToast('Save failed'); }
+      } catch (err) { showToast('Save failed'); }
     }
 
     async function approveSpec(path) {
       try {
-        const res = await fetch('/api/spec/approve?path=' + encodeURIComponent(path), { method: 'POST' });
+        var res = await fetch('/api/spec/approve?path=' + encodeURIComponent(path), { method: 'POST' });
         if (res.ok) {
-          showToast('Spec approved — ready to implement');
+          showToast('Spec approved');
           loadSpecs();
-          viewSpec(path); // Refresh modal to show Implement button
+          viewSpec(path);
         } else {
-          const data = await res.json();
+          var data = await res.json();
           showToast(data.error || 'Failed to approve');
         }
-      } catch {
+      } catch (err) {
         showToast('Failed to approve spec');
       }
     }
 
     function showImplement(id, branch) {
-      document.getElementById('modal-content').innerHTML =
+      var mc = document.getElementById('modal-content');
+      mc.innerHTML =
         '<h2 style="margin-bottom:16px">Implement Spec #' + esc(id) + '</h2>' +
-        '<p style="margin-bottom:12px;color:var(--text-dim)">Run these commands to start implementation:</p>' +
-        '<pre style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;font-family:\\'SF Mono\\',monospace;font-size:13px;line-height:1.6">' +
+        '<p style="margin-bottom:12px;color:var(--color-text-secondary)">Run these commands to start implementation:</p>' +
+        '<pre style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:8px;padding:16px;font-family:var(--font-mono);font-size:13px;line-height:1.6">' +
         'git checkout -b ' + esc(branch) + '\\n' +
         '# Start coding the spec\\n' +
         '# When done, update spec status to in-progress' +
@@ -922,26 +1329,26 @@ function getDashboardHTML(projectName: string): string {
 
     // ── Modules ──
     async function loadModules() {
-      const res = await fetch('/api/modules');
-      const data = await res.json();
-      const el = document.getElementById('modules-content');
+      var res = await fetch('/api/modules');
+      var data = await res.json();
+      var el = document.getElementById('modules-content');
 
       if (data.modules.length === 0) {
         el.innerHTML = '<div class="empty-state"><h3>No modules found</h3><p>Modules document your codebase architecture for AI agents. Run a scan to generate them.</p><code>agentctx scan</code></div>';
         return;
       }
 
-      const now = Date.now();
-      let html = '<table class="data-table"><thead><tr><th>Name</th><th>Key Files</th><th>Exports</th><th>Last Modified</th><th>Tokens</th></tr></thead><tbody>';
+      var now = Date.now();
+      var html = '<table class="data-table"><thead><tr><th>Name</th><th>Key Files</th><th>Exports</th><th>Last Modified</th><th>Tokens</th></tr></thead><tbody>';
 
-      for (const m of data.modules) {
-        const modified = new Date(m.lastModified);
-        const daysAgo = Math.floor((now - modified.getTime()) / 86400000);
-        const isStale = daysAgo > 7;
-        const dateStr = daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : daysAgo + ' days ago';
-        const rowId = 'mod-' + m.name;
+      for (var i = 0; i < data.modules.length; i++) {
+        var m = data.modules[i];
+        var modified = new Date(m.lastModified);
+        var daysAgo = Math.floor((now - modified.getTime()) / 86400000);
+        var isStale = daysAgo > 7;
+        var dateStr = daysAgo === 0 ? 'Today' : daysAgo === 1 ? 'Yesterday' : daysAgo + ' days ago';
 
-        html += '<tr onclick="toggleModule(\\'' + esc(m.name) + '\\')" id="row-' + esc(m.name) + '">';
+        html += '<tr data-module-name="' + esc(m.name) + '">';
         html += '<td><strong>' + esc(m.name) + '</strong></td>';
         html += '<td class="mono">' + m.files.length + ' files</td>';
         html += '<td class="mono">' + m.exports.length + '</td>';
@@ -953,12 +1360,12 @@ function getDashboardHTML(projectName: string): string {
         html += '<tr id="detail-' + esc(m.name) + '" style="display:none"><td colspan="5"><div class="module-detail">';
         if (m.files.length > 0) {
           html += '<h4>Key Files</h4><ul>';
-          for (const f of m.files) html += '<li>' + esc(f) + '</li>';
+          for (var fi = 0; fi < m.files.length; fi++) html += '<li>' + esc(m.files[fi]) + '</li>';
           html += '</ul>';
         }
         if (m.exports.length > 0) {
           html += '<h4 style="margin-top:12px">Exports</h4><ul>';
-          for (const e of m.exports) html += '<li>' + esc(e) + '</li>';
+          for (var ei = 0; ei < m.exports.length; ei++) html += '<li>' + esc(m.exports[ei]) + '</li>';
           html += '</ul>';
         }
         html += '</div></td></tr>';
@@ -969,15 +1376,14 @@ function getDashboardHTML(projectName: string): string {
     }
 
     function toggleModule(name) {
-      const detail = document.getElementById('detail-' + name);
+      var detail = document.getElementById('detail-' + name);
       if (!detail) return;
       if (expandedModule === name) {
         detail.style.display = 'none';
         expandedModule = null;
       } else {
-        // Collapse previous
         if (expandedModule) {
-          const prev = document.getElementById('detail-' + expandedModule);
+          var prev = document.getElementById('detail-' + expandedModule);
           if (prev) prev.style.display = 'none';
         }
         detail.style.display = '';
@@ -987,18 +1393,19 @@ function getDashboardHTML(projectName: string): string {
 
     // ── Context ──
     async function loadContext() {
-      const res = await fetch('/api/context');
-      const files = await res.json();
-      const el = document.getElementById('context-content');
+      var res = await fetch('/api/context');
+      var files = await res.json();
+      var el = document.getElementById('context-content');
 
       if (files.length === 0) {
         el.innerHTML = '<div class="empty-state"><h3>No context files</h3><p>Initialize agentctx to create context files for AI agents.</p><code>agentctx init</code></div>';
         return;
       }
 
-      let treeHTML = '';
-      for (const f of files) {
-        treeHTML += '<div class="ctx-file" data-path="' + esc(f.path) + '" onclick="viewContextFile(this, \\'' + esc(f.path) + '\\')">' +
+      var treeHTML = '';
+      for (var i = 0; i < files.length; i++) {
+        var f = files[i];
+        treeHTML += '<div class="ctx-file" data-ctx-path="' + esc(f.path) + '" tabindex="0">' +
           '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 1.5A1.5 1.5 0 014.5 0h5.379a1.5 1.5 0 011.06.44l2.122 2.12A1.5 1.5 0 0113.5 3.622V14.5a1.5 1.5 0 01-1.5 1.5h-8A1.5 1.5 0 013 14.5v-13z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>' +
           '<span>' + esc(f.name) + '</span>' +
           '<span class="tokens">' + f.tokens + '</span>' +
@@ -1009,31 +1416,31 @@ function getDashboardHTML(projectName: string): string {
     }
 
     async function viewContextFile(el, path) {
-      document.querySelectorAll('.ctx-file').forEach(f => f.classList.remove('active'));
+      document.querySelectorAll('.ctx-file').forEach(function(f) { f.classList.remove('active'); });
       el.classList.add('active');
       try {
-        const res = await fetch('/api/file?path=' + encodeURIComponent(path));
-        const text = await res.text();
+        var res = await fetch('/api/file?path=' + encodeURIComponent(path));
+        var text = await res.text();
         document.getElementById('ctx-viewer').innerHTML = '<div class="md">' + marked.parse(text) + '</div>';
-      } catch {
+      } catch (err) {
         document.getElementById('ctx-viewer').innerHTML = '<div class="empty-state"><p>Could not load file</p></div>';
       }
     }
 
     // ── Health ──
     async function loadHealth() {
-      const el = document.getElementById('health-content');
-      el.innerHTML = '<div style="color:var(--text-dim);padding:20px">Loading...</div>';
+      var el = document.getElementById('health-content');
+      el.innerHTML = '<div style="color:var(--color-text-secondary);padding:20px">Loading...</div>';
 
-      const res = await fetch('/api/health');
-      const data = await res.json();
+      var res = await fetch('/api/health');
+      var data = await res.json();
 
-      const pct = data.score / data.max;
-      const circumference = 2 * Math.PI * 65;
-      const offset = circumference * (1 - pct);
-      const color = data.score >= 8 ? 'var(--green)' : data.score >= 5 ? 'var(--yellow)' : 'var(--red)';
+      var pct = data.score / data.max;
+      var circumference = 2 * Math.PI * 65;
+      var offset = circumference * (1 - pct);
+      var color = data.score >= 8 ? 'var(--color-success)' : data.score >= 5 ? 'var(--color-warning)' : 'var(--color-error)';
 
-      let html = '<div class="health-grid"><div class="health-score">' +
+      var html = '<div class="health-grid"><div class="health-score">' +
         '<div class="score-ring"><svg width="160" height="160" viewBox="0 0 160 160">' +
         '<circle class="bg" cx="80" cy="80" r="65"/>' +
         '<circle class="fg" cx="80" cy="80" r="65" stroke="' + color + '" stroke-dasharray="' + circumference + '" stroke-dashoffset="' + offset + '"/>' +
@@ -1041,9 +1448,10 @@ function getDashboardHTML(projectName: string): string {
         '<div class="score-label">out of ' + data.max + '</div>' +
         '</div><div class="health-checks">';
 
-      for (const c of data.checks) {
+      for (var i = 0; i < data.checks.length; i++) {
+        var c = data.checks[i];
         html += '<div class="check-item">' +
-          '<div class="check-icon ' + (c.pass ? 'pass' : 'fail') + '">' + (c.pass ? '\u2713' : '\u2717') + '</div>' +
+          '<div class="check-icon ' + (c.pass ? 'pass' : 'fail') + '">' + (c.pass ? '\\u2713' : '\\u2717') + '</div>' +
           '<span>' + esc(c.label) + '</span>' +
           (c.detail ? '<span class="check-detail">' + esc(c.detail) + '</span>' : '') +
           '</div>';
@@ -1053,8 +1461,9 @@ function getDashboardHTML(projectName: string): string {
 
       if (data.recommendations.length > 0) {
         html += '<div class="recommendations"><h3>Recommendations</h3>';
-        for (const r of data.recommendations) {
-          html += '<div class="rec-item" onclick="copyRec(this, \\'' + esc(r).replace(/'/g, "\\\\'") + '\\')">' + esc(r) + '</div>';
+        for (var ri = 0; ri < data.recommendations.length; ri++) {
+          var r = data.recommendations[ri];
+          html += '<div class="rec-item" data-rec="' + esc(r) + '">' + esc(r) + '</div>';
         }
         html += '</div>';
       }
@@ -1063,45 +1472,53 @@ function getDashboardHTML(projectName: string): string {
     }
 
     function copyRec(el, text) {
-      navigator.clipboard.writeText(text).then(() => {
+      navigator.clipboard.writeText(text).then(function() {
         el.classList.add('copied');
-        setTimeout(() => el.classList.remove('copied'), 1500);
+        setTimeout(function() { el.classList.remove('copied'); }, 1500);
       });
     }
 
     // ── Activity ──
     async function loadActivity() {
-      const res = await fetch('/api/activity');
-      const data = await res.json();
-      const el = document.getElementById('activity-content');
+      var res = await fetch('/api/activity');
+      var data = await res.json();
+      var el = document.getElementById('activity-content');
 
       if (data.events.length === 0) {
         el.innerHTML = '<div class="empty-state"><h3>No activity yet</h3><p>Activity is derived from your git history. Make some commits to see them here.</p></div>';
         return;
       }
 
-      // Group by date
-      const groups = {};
-      for (const e of data.events) {
-        if (!groups[e.date]) groups[e.date] = [];
-        groups[e.date].push(e);
-      }
-
-      const iconMap = {
-        commit: '\u2022',
-        spec: '\u2606',
-        checkpoint: '\u2691',
-        module: '\u25CB',
+      var iconMap = {
+        commit: '\\u2022',
+        spec: '\\u2606',
+        checkpoint: '\\u2691',
+        module: '\\u25CB'
       };
 
-      let html = '<div class="timeline">';
-      for (const [date, events] of Object.entries(groups)) {
+      // Group by date
+      var groups = {};
+      var groupOrder = [];
+      for (var i = 0; i < data.events.length; i++) {
+        var ev = data.events[i];
+        if (!groups[ev.date]) {
+          groups[ev.date] = [];
+          groupOrder.push(ev.date);
+        }
+        groups[ev.date].push(ev);
+      }
+
+      var html = '<div class="timeline">';
+      for (var gi = 0; gi < groupOrder.length; gi++) {
+        var date = groupOrder[gi];
+        var events = groups[date];
         html += '<div class="timeline-day"><div class="timeline-day-label">' + esc(date) + '</div>';
-        for (const e of events) {
+        for (var ei = 0; ei < events.length; ei++) {
+          var ev2 = events[ei];
           html += '<div class="timeline-event">' +
-            '<div class="event-icon ' + esc(e.type) + '">' + (iconMap[e.type] || '\u2022') + '</div>' +
-            '<div class="event-message">' + esc(e.message) + '</div>' +
-            '<div class="event-time">' + esc(e.time) + '</div>' +
+            '<div class="event-icon ' + esc(ev2.type) + '">' + (iconMap[ev2.type] || '\\u2022') + '</div>' +
+            '<div class="event-message">' + esc(ev2.message) + '</div>' +
+            '<div class="event-time">' + esc(ev2.time) + '</div>' +
             '</div>';
         }
         html += '</div>';
@@ -1113,25 +1530,39 @@ function getDashboardHTML(projectName: string): string {
     // ── Sync ──
     async function runSync() {
       try {
-        const res = await fetch('/api/sync', { method: 'POST' });
+        var res = await fetch('/api/sync', { method: 'POST' });
         if (res.ok) showToast('Sync started');
         else showToast('Sync failed to start');
-      } catch {
+      } catch (err) {
         showToast('Sync failed');
       }
     }
 
     // ── SSE live reload ──
-    const es = new EventSource('/api/events');
-    es.onmessage = (e) => {
-      // Reload current tab data
-      const activeTab = document.querySelector('.tab.active');
-      if (activeTab) activeTab.click();
+    var es = new EventSource('/api/events');
+    es.onmessage = function() {
+      var activeTab = document.querySelector('.tab.active');
+      if (activeTab) switchTab(activeTab);
     };
 
     // ── Init: load first tab ──
     loadSpecs();
-  </script>
+  `;
+}
+
+function getDashboardHTML(projectName: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHTML(projectName)} — Dashboard</title>
+  <style>${getCSS()}</style>
+</head>
+<body>
+  ${getBodyHTML(projectName)}
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>${getJS()}</script>
 </body>
 </html>`;
 }
@@ -1142,6 +1573,255 @@ function openBrowser(url: string): void {
   const cmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
   exec(`${cmd} ${url}`);
 }
+
+async function handleAPIRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  projectRoot: string,
+): Promise<boolean> {
+  // SSE endpoint
+  if (url.pathname === '/api/events') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+    res.write('data: {"type":"connected"}\n\n');
+    sseClients.add(res);
+    req.on('close', () => sseClients.delete(res));
+    return true;
+  }
+
+  // API: Specs list
+  if (url.pathname === '/api/specs') {
+    const data = await getSpecs(projectRoot);
+    jsonResponse(res, data);
+    return true;
+  }
+
+  // API: Modules list
+  if (url.pathname === '/api/modules') {
+    const data = await getModules(projectRoot);
+    jsonResponse(res, data);
+    return true;
+  }
+
+  // API: Health
+  if (url.pathname === '/api/health') {
+    const data = await getHealth(projectRoot);
+    jsonResponse(res, data);
+    return true;
+  }
+
+  // API: Activity
+  if (url.pathname === '/api/activity') {
+    const data = await getActivity(projectRoot);
+    jsonResponse(res, data);
+    return true;
+  }
+
+  // API: Context files list
+  if (url.pathname === '/api/context') {
+    const files = await getContextFiles(projectRoot);
+    jsonResponse(res, files);
+    return true;
+  }
+
+  // API: Read a specific file (for context viewer and spec viewer)
+  if (url.pathname === '/api/file') {
+    const filePath = url.searchParams.get('path');
+    if (!filePath) { res.writeHead(400); res.end('Missing path'); return true; }
+    const resolved = join(projectRoot, filePath);
+    if (!resolved.startsWith(projectRoot)) { res.writeHead(403); res.end('Forbidden'); return true; }
+    try {
+      const content = await readFile(resolved, 'utf-8');
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(content);
+    } catch {
+      res.writeHead(404); res.end('Not found');
+    }
+    return true;
+  }
+
+  // API: Read spec
+  if (url.pathname === '/api/spec' && req.method === 'GET') {
+    const specPath = url.searchParams.get('path');
+    if (!specPath) { res.writeHead(400); res.end('Missing path'); return true; }
+    const resolved = join(projectRoot, specPath);
+    if (!resolved.startsWith(projectRoot)) { res.writeHead(403); res.end('Forbidden'); return true; }
+    try {
+      const content = await readFile(resolved, 'utf-8');
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(content);
+    } catch {
+      res.writeHead(404); res.end('Spec not found');
+    }
+    return true;
+  }
+
+  // API: Approve spec (frontmatter-based, no file rename)
+  if (url.pathname === '/api/spec/approve' && req.method === 'POST') {
+    const specPath = url.searchParams.get('path');
+    if (!specPath) { jsonResponse(res, { error: 'Missing path' }, 400); return true; }
+    const resolved = join(projectRoot, specPath);
+    if (!resolved.startsWith(projectRoot)) { jsonResponse(res, { error: 'Forbidden' }, 403); return true; }
+
+    try {
+      const content = await readFile(resolved, 'utf-8');
+      const fm = parseFrontmatter(content);
+
+      if (fm.status !== 'draft') {
+        jsonResponse(res, { error: `Only draft specs can be approved (current status: ${fm.status || 'unknown'})` }, 400);
+        return true;
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      let updated = content;
+      updated = updated.replace(/^(status:\s*)draft/m, '$1approved');
+      updated = updated.replace(/^(updated:\s*)\S+/m, `$1${today}`);
+      const historyEntry = `  - status: approved\n    date: ${today}`;
+      updated = updated.replace(/(history:\n(?:[\s\S]*?))(\n---)/m, `$1\n${historyEntry}$2`);
+
+      await writeFile(resolved, updated, 'utf-8');
+
+      // Update INDEX.md
+      const indexPath = join(projectRoot, '.agentctx', 'specs', 'INDEX.md');
+      if (existsSync(indexPath)) {
+        try {
+          let index = await readFile(indexPath, 'utf-8');
+          const specId = fm.id;
+          if (specId) {
+            index = index.replace(
+              new RegExp(`(\\|\\s*${specId}\\s*\\|[^|]*\\|\\s*)draft(\\s*\\|)`),
+              `$1approved$2`,
+            );
+            await writeFile(indexPath, index, 'utf-8');
+          }
+        } catch { /* ignore index update failure */ }
+      }
+
+      jsonResponse(res, { ok: true, path: specPath });
+    } catch (err) {
+      jsonResponse(res, { error: String(err) }, 500);
+    }
+    return true;
+  }
+
+  // API: Config
+  if (url.pathname === '/api/config') {
+    try {
+      const { findConfigPath, loadConfig } = await import('../core/config.js');
+      const configPath = findConfigPath(projectRoot);
+      if (configPath) {
+        const config = await loadConfig(configPath);
+        jsonResponse(res, config);
+      } else {
+        jsonResponse(res, { error: 'No config found' }, 404);
+      }
+    } catch (err) {
+      jsonResponse(res, { error: String(err) }, 500);
+    }
+    return true;
+  }
+
+  // API: Sync
+  if (url.pathname === '/api/sync' && req.method === 'POST') {
+    try {
+      const { spawn } = await import('node:child_process');
+      const child = spawn('npx', ['agentctx', 'sync', '--no-ai'], {
+        cwd: projectRoot,
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.unref();
+      jsonResponse(res, { ok: true, message: 'Sync started in background' });
+    } catch (err) {
+      jsonResponse(res, { error: String(err) }, 500);
+    }
+    return true;
+  }
+
+  // API: Create spec or BRD
+  if (url.pathname === '/api/spec/create' && req.method === 'POST') {
+    const chunks: Buffer[] = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', async () => {
+      try {
+        const body = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
+        const { type, title } = body as { type: string; title: string };
+        if (!title) { jsonResponse(res, { error: 'Title required' }, 400); return; }
+
+        const specsDir = join(projectRoot, '.agentctx', 'specs');
+        const templatesDir = join(specsDir, '_templates');
+        await mkdir(specsDir, { recursive: true });
+
+        let maxId = 0;
+        try {
+          const files = await readdir(specsDir);
+          for (const f of files) {
+            const match = f.match(/^(?:\d{4})-/) ? f.match(/^(\d{4})-/) : f.match(/(?:draft|approved|in-progress|completed)-(?:BRD-)?(\d+)/);
+            if (match) {
+              const idNum = parseInt(match[1] || match[2]);
+              if (!isNaN(idNum)) maxId = Math.max(maxId, idNum);
+            }
+          }
+        } catch { /* empty dir */ }
+        const nextId = String(maxId + 1).padStart(4, '0');
+
+        const kebab = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const filename = `${nextId}-${kebab}.md`;
+        const today = new Date().toISOString().split('T')[0];
+
+        const isBrd = type === 'brd';
+        const templateName = isBrd ? 'brd-template.md' : 'feature-spec.md';
+        const templatePath = join(templatesDir, templateName);
+        let content: string;
+        try {
+          content = await readFile(templatePath, 'utf-8');
+          content = content.replace(/NNNN/g, nextId).replace(/\{Title\}|Feature Title|BRD Title/g, title).replace(/YYYY-MM-DD/g, today);
+        } catch {
+          content = `---\nid: "${nextId}"\ntitle: "${title}"\nstatus: draft\ncreated: ${today}\nupdated: ${today}\npriority: P2\nhistory:\n  - status: draft\n    date: ${today}\n---\n\n# ${title}\n\n## Description\n\n## Acceptance Criteria\n- [ ] \n`;
+        }
+
+        await writeFile(join(specsDir, filename), content, 'utf-8');
+
+        const indexPath = join(specsDir, 'INDEX.md');
+        try {
+          let index = await readFile(indexPath, 'utf-8');
+          index += `| ${nextId} | ${title} | draft | P2 | — | ${today} |\n`;
+          await writeFile(indexPath, index, 'utf-8');
+        } catch { /* no index */ }
+
+        jsonResponse(res, { ok: true, path: `.agentctx/specs/${filename}`, id: nextId });
+      } catch (err) {
+        jsonResponse(res, { error: String(err) }, 500);
+      }
+    });
+    return true;
+  }
+
+  // API: Save file (edit spec or module)
+  if (url.pathname === '/api/file/save' && req.method === 'POST') {
+    const filePath = url.searchParams.get('path');
+    if (!filePath) { jsonResponse(res, { error: 'Missing path' }, 400); return true; }
+    const resolved = join(projectRoot, filePath);
+    if (!resolved.startsWith(projectRoot)) { jsonResponse(res, { error: 'Forbidden' }, 403); return true; }
+
+    const chunks: Buffer[] = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', async () => {
+      try {
+        const content = Buffer.concat(chunks).toString('utf-8');
+        await writeFile(resolved, content, 'utf-8');
+        jsonResponse(res, { ok: true });
+      } catch (err) {
+        jsonResponse(res, { error: String(err) }, 500);
+      }
+    });
+    return true;
+  }
+
+  return false;
+}
+
+// ── Main command ───────────────────────────────────────────────────────
 
 export async function dashboardCommand(options: DashboardOptions): Promise<void> {
   const projectRoot = process.cwd();
@@ -1164,252 +1844,8 @@ export async function dashboardCommand(options: DashboardOptions): Promise<void>
     const url = new URL(req.url || '/', `http://localhost:${port}`);
 
     try {
-      // SSE endpoint
-      if (url.pathname === '/api/events') {
-        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
-        res.write('data: {"type":"connected"}\n\n');
-        sseClients.add(res);
-        req.on('close', () => sseClients.delete(res));
-        return;
-      }
-
-      // API: Specs list
-      if (url.pathname === '/api/specs') {
-        const data = await getSpecs(projectRoot);
-        jsonResponse(res, data);
-        return;
-      }
-
-      // API: Modules list
-      if (url.pathname === '/api/modules') {
-        const data = await getModules(projectRoot);
-        jsonResponse(res, data);
-        return;
-      }
-
-      // API: Health
-      if (url.pathname === '/api/health') {
-        const data = await getHealth(projectRoot);
-        jsonResponse(res, data);
-        return;
-      }
-
-      // API: Activity
-      if (url.pathname === '/api/activity') {
-        const data = await getActivity(projectRoot);
-        jsonResponse(res, data);
-        return;
-      }
-
-      // API: Context files list
-      if (url.pathname === '/api/context') {
-        const files = await getContextFiles(projectRoot);
-        jsonResponse(res, files);
-        return;
-      }
-
-      // API: Read a specific file (for context viewer and spec viewer)
-      if (url.pathname === '/api/file') {
-        const filePath = url.searchParams.get('path');
-        if (!filePath) { res.writeHead(400); res.end('Missing path'); return; }
-        const resolved = join(projectRoot, filePath);
-        if (!resolved.startsWith(projectRoot)) { res.writeHead(403); res.end('Forbidden'); return; }
-        try {
-          const content = await readFile(resolved, 'utf-8');
-          res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' });
-          res.end(content);
-        } catch {
-          res.writeHead(404); res.end('Not found');
-        }
-        return;
-      }
-
-      // API: Read spec
-      if (url.pathname === '/api/spec' && req.method === 'GET') {
-        const specPath = url.searchParams.get('path');
-        if (!specPath) { res.writeHead(400); res.end('Missing path'); return; }
-        const resolved = join(projectRoot, specPath);
-        if (!resolved.startsWith(projectRoot)) { res.writeHead(403); res.end('Forbidden'); return; }
-        try {
-          const content = await readFile(resolved, 'utf-8');
-          res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache' });
-          res.end(content);
-        } catch {
-          res.writeHead(404); res.end('Spec not found');
-        }
-        return;
-      }
-
-      // API: Approve spec (frontmatter-based, no file rename)
-      if (url.pathname === '/api/spec/approve' && req.method === 'POST') {
-        const specPath = url.searchParams.get('path');
-        if (!specPath) { jsonResponse(res, { error: 'Missing path' }, 400); return; }
-        const resolved = join(projectRoot, specPath);
-        if (!resolved.startsWith(projectRoot)) { jsonResponse(res, { error: 'Forbidden' }, 403); return; }
-
-        try {
-          const content = await readFile(resolved, 'utf-8');
-          const fm = parseFrontmatter(content);
-
-          // Only draft specs can be approved
-          if (fm.status !== 'draft') {
-            jsonResponse(res, { error: `Only draft specs can be approved (current status: ${fm.status || 'unknown'})` }, 400);
-            return;
-          }
-
-          const today = new Date().toISOString().split('T')[0];
-          // Update frontmatter: status, updated date, append history entry
-          let updated = content;
-          updated = updated.replace(/^(status:\s*)draft/m, '$1approved');
-          updated = updated.replace(/^(updated:\s*)\S+/m, `$1${today}`);
-          // Append to history array
-          const historyEntry = `  - status: approved\n    date: ${today}`;
-          updated = updated.replace(/(history:\n(?:[\s\S]*?))(\n---)/m, `$1\n${historyEntry}$2`);
-
-          await writeFile(resolved, updated, 'utf-8');
-
-          // Update INDEX.md
-          const indexPath = join(projectRoot, '.agentctx', 'specs', 'INDEX.md');
-          if (existsSync(indexPath)) {
-            try {
-              let index = await readFile(indexPath, 'utf-8');
-              const specId = fm.id;
-              if (specId) {
-                index = index.replace(
-                  new RegExp(`(\\|\\s*${specId}\\s*\\|[^|]*\\|\\s*)draft(\\s*\\|)`),
-                  `$1approved$2`
-                );
-                await writeFile(indexPath, index, 'utf-8');
-              }
-            } catch { /* ignore index update failure */ }
-          }
-
-          jsonResponse(res, { ok: true, path: specPath });
-        } catch (err) {
-          jsonResponse(res, { error: String(err) }, 500);
-        }
-        return;
-      }
-
-      // API: Config
-      if (url.pathname === '/api/config') {
-        try {
-          const { findConfigPath, loadConfig } = await import('../core/config.js');
-          const configPath = findConfigPath(projectRoot);
-          if (configPath) {
-            const config = await loadConfig(configPath);
-            jsonResponse(res, config);
-          } else {
-            jsonResponse(res, { error: 'No config found' }, 404);
-          }
-        } catch (err) {
-          jsonResponse(res, { error: String(err) }, 500);
-        }
-        return;
-      }
-
-      // API: Sync
-      if (url.pathname === '/api/sync' && req.method === 'POST') {
-        try {
-          const { spawn } = await import('node:child_process');
-          const child = spawn('npx', ['agentctx', 'sync', '--no-ai'], {
-            cwd: projectRoot,
-            detached: true,
-            stdio: 'ignore',
-          });
-          child.unref();
-          jsonResponse(res, { ok: true, message: 'Sync started in background' });
-        } catch (err) {
-          jsonResponse(res, { error: String(err) }, 500);
-        }
-        return;
-      }
-
-      // API: Create spec or BRD
-      if (url.pathname === '/api/spec/create' && req.method === 'POST') {
-        const chunks: Buffer[] = [];
-        req.on('data', (c) => chunks.push(c));
-        req.on('end', async () => {
-          try {
-            const body = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
-            const { type, title } = body as { type: string; title: string };
-            if (!title) { jsonResponse(res, { error: 'Title required' }, 400); return; }
-
-            const specsDir = join(projectRoot, '.agentctx', 'specs');
-            const templatesDir = join(specsDir, '_templates');
-            await mkdir(specsDir, { recursive: true });
-
-            // Find next ID by scanning all .md files for frontmatter id or filename pattern
-            let maxId = 0;
-            try {
-              const files = await readdir(specsDir);
-              for (const f of files) {
-                // Match {NNNN}-{name}.md or legacy {status}-{NNNN}-{name}.md
-                const match = f.match(/^(?:\d{4})-/) ? f.match(/^(\d{4})-/) : f.match(/(?:draft|approved|in-progress|completed)-(?:BRD-)?(\d+)/);
-                if (match) {
-                  const idNum = parseInt(match[1] || match[2]);
-                  if (!isNaN(idNum)) maxId = Math.max(maxId, idNum);
-                }
-              }
-            } catch { /* empty dir */ }
-            const nextId = String(maxId + 1).padStart(4, '0');
-
-            const kebab = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-            // No status prefix in filename — status tracked in frontmatter
-            const filename = `${nextId}-${kebab}.md`;
-            const today = new Date().toISOString().split('T')[0];
-
-            // Load template
-            const isBrd = type === 'brd';
-            const templateName = isBrd ? 'brd-template.md' : 'feature-spec.md';
-            const templatePath = join(templatesDir, templateName);
-            let content: string;
-            try {
-              content = await readFile(templatePath, 'utf-8');
-              content = content.replace(/NNNN/g, nextId).replace(/\{Title\}|Feature Title|BRD Title/g, title).replace(/YYYY-MM-DD/g, today);
-            } catch {
-              // No template — create minimal spec with history
-              content = `---\nid: "${nextId}"\ntitle: "${title}"\nstatus: draft\ncreated: ${today}\nupdated: ${today}\npriority: P2\nhistory:\n  - status: draft\n    date: ${today}\n---\n\n# ${title}\n\n## Description\n\n## Acceptance Criteria\n- [ ] \n`;
-            }
-
-            await writeFile(join(specsDir, filename), content, 'utf-8');
-
-            // Update INDEX.md
-            const indexPath = join(specsDir, 'INDEX.md');
-            try {
-              let index = await readFile(indexPath, 'utf-8');
-              index += `| ${nextId} | ${title} | draft | P2 | — | ${today} |\n`;
-              await writeFile(indexPath, index, 'utf-8');
-            } catch { /* no index */ }
-
-            jsonResponse(res, { ok: true, path: `.agentctx/specs/${filename}`, id: nextId });
-          } catch (err) {
-            jsonResponse(res, { error: String(err) }, 500);
-          }
-        });
-        return;
-      }
-
-      // API: Save file (edit spec or module)
-      if (url.pathname === '/api/file/save' && req.method === 'POST') {
-        const filePath = url.searchParams.get('path');
-        if (!filePath) { jsonResponse(res, { error: 'Missing path' }, 400); return; }
-        const resolved = join(projectRoot, filePath);
-        if (!resolved.startsWith(projectRoot)) { jsonResponse(res, { error: 'Forbidden' }, 403); return; }
-
-        const chunks: Buffer[] = [];
-        req.on('data', (c) => chunks.push(c));
-        req.on('end', async () => {
-          try {
-            const content = Buffer.concat(chunks).toString('utf-8');
-            await writeFile(resolved, content, 'utf-8');
-            jsonResponse(res, { ok: true });
-          } catch (err) {
-            jsonResponse(res, { error: String(err) }, 500);
-          }
-        });
-        return;
-      }
+      const handled = await handleAPIRequest(req, res, url, projectRoot);
+      if (handled) return;
 
       // Default: serve dashboard HTML
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
