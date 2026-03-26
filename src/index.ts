@@ -112,11 +112,10 @@ program
 
 program
   .command('agents <action> [name]')
-  .description('Browse and manage AI agent personalities')
-  .option('--all', 'Show all agents from agency-agents repo (not just bundled)')
-  .action(async (action, name, options) => {
+  .description('Browse and manage AI agent personalities (156 bundled)')
+  .action(async (action, name) => {
     const { agentsCommand } = await import('./commands/agents.js');
-    await agentsCommand(action, name, options);
+    await agentsCommand(action, name);
   });
 
 program
