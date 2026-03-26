@@ -1,10 +1,19 @@
 Run a design quality audit across the current codebase.
 
+## MANDATORY PREPARATION
+
+1. Read `conventions/design/principles.md` — Quick Rules section
+2. Read `conventions/design/anti-patterns.md`
+3. Check if `conventions/design/design-context.md` has been filled in
+   - If still template placeholders: ask the user about target audience, brand personality, aesthetic direction, and accessibility requirements
+   - Fill in the design context before proceeding
+   - Save the updated file
+
 ## Prerequisites
 
 1. **Read conventions before auditing** — this is mandatory:
-   - Read `.agentctx/context/conventions/design-principles.md`
-   - Read `.agentctx/context/conventions/anti-patterns.md`
+   - Read `.agentctx/context/conventions/design/design-principles.md`
+   - Read `.agentctx/context/conventions/design/anti-patterns.md`
    - These define what "correct" looks like for this project
 
 2. Identify the UI files to audit:

@@ -188,10 +188,13 @@ export async function composeSkills(
   const scaffolds: Array<{ dest: string; content: string }> = [];
 
   for (const skill of skills) {
-    // Load context files (conventions)
+    const skillName = skill.yaml.name;
+
+    // Load context files (conventions) — namespaced by skill
     for (const relativePath of skill.yaml.context) {
       const fullPath = resolve(skill.dir, relativePath);
       const filename = basename(relativePath);
+      const namespacedKey = `${skillName}/${filename}`;
 
       let content: string;
       try {
@@ -202,21 +205,22 @@ export async function composeSkills(
         );
       }
 
-      if (conventionMap.has(filename)) {
+      if (conventionMap.has(namespacedKey)) {
         console.warn(
           `Skill "${skill.yaml.name}" overrides file "${filename}" from a previous skill`,
         );
       }
-      conventionMap.set(filename, {
-        relativePath: `conventions/${filename}`,
+      conventionMap.set(namespacedKey, {
+        relativePath: `conventions/${skillName}/${filename}`,
         content,
       });
     }
 
-    // Load reference files
+    // Load reference files — namespaced by skill
     for (const relativePath of skill.yaml.references) {
       const fullPath = resolve(skill.dir, relativePath);
       const filename = basename(relativePath);
+      const namespacedKey = `${skillName}/${filename}`;
 
       let content: string;
       try {
@@ -227,8 +231,8 @@ export async function composeSkills(
         );
       }
 
-      referenceMap.set(filename, {
-        relativePath: `references/${filename}`,
+      referenceMap.set(namespacedKey, {
+        relativePath: `references/${skillName}/${filename}`,
         content: `<!-- Reference material from ${skill.yaml.name} -->\n${content}`,
       });
     }

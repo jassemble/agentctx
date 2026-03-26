@@ -32,8 +32,8 @@ function makeConfig(overrides?: Partial<AgentCtxConfig>): AgentCtxConfig {
     project: { name: 'test-project', language: 'typescript', framework: 'nextjs' },
     skills: ['nextjs', 'tailwind'],
     context: [
-      'context/conventions/routing.md',
-      'context/conventions/data-fetching.md',
+      'context/conventions/nextjs/routing.md',
+      'context/conventions/nextjs/data-fetching.md',
       'context/modules/auth.md',
       'context/architecture.md',
       'context/decisions.md',
@@ -91,21 +91,21 @@ describe('generateClaude', () => {
   it('renders Context Routing table', () => {
     const result = generateClaude(makeModules(), makeConfig());
     expect(result).toContain('## Context Routing');
-    expect(result).toContain('conventions/*.md');
+    expect(result).toContain('conventions/{skill}/*.md');
     expect(result).toContain('modules/*.md');
     expect(result).toContain('architecture.md');
   });
 
   it('only shows routing rows for directories that have files', () => {
     const config = makeConfig({
-      context: ['context/conventions/routing.md'],
+      context: ['context/conventions/nextjs/routing.md'],
     });
     const modules = [makeModules()[0]];
     const result = generateClaude(modules, config);
     expect(result).toContain('conventions/');
     // Task routing always mentions modules for "New feature area" row
     expect(result).not.toContain('agents/*.md');
-    expect(result).not.toContain('references/*.md');
+    expect(result).not.toContain('references/{skill}/*.md');
   });
 
   it('renders Module Index for feature modules', () => {

@@ -8,6 +8,7 @@ conflicts: []
 context:
   - context/design-principles.md
   - context/anti-patterns.md
+  - context/design-context.md
 commands:
   - commands/audit.md
   - commands/normalize.md

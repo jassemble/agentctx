@@ -118,27 +118,23 @@ describe('composeSkills', () => {
     expect(result.files).toHaveLength(2);
 
     const filenames = result.files.map((f) => f.relativePath);
-    expect(filenames).toContain('conventions/principles.md');
-    expect(filenames).toContain('conventions/style.md');
+    expect(filenames).toContain('conventions/test-skill-a/principles.md');
+    expect(filenames).toContain('conventions/test-skill-b/style.md');
   });
 
-  it('last skill wins on duplicate filename', async () => {
+  it('namespaces files by skill name so duplicates do not collide', async () => {
     const skillA = loadFixtureSkill('test-skill-a');
     const skillDup = loadFixtureSkill('test-skill-b-dup');
 
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
     const result = await composeSkills([skillA, skillDup]);
 
-    expect(result.files).toHaveLength(1);
-    expect(result.files[0].relativePath).toBe('conventions/principles.md');
-    expect(result.files[0].content).toContain('Overridden Principles');
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('overrides file "principles.md"'),
-    );
-
-    warnSpy.mockRestore();
+    // Both skills have the same filename but different skill names, so they are namespaced separately
+    // test-skill-a → conventions/test-skill-a/principles.md
+    // test-skill-b-dup → conventions/test-skill-b-dup/principles.md
+    expect(result.files).toHaveLength(2);
+    const paths = result.files.map(f => f.relativePath);
+    expect(paths).toContain('conventions/test-skill-a/principles.md');
+    expect(paths).toContain('conventions/test-skill-b-dup/principles.md');
   });
 
   it('returns empty referenceFiles when no references defined', async () => {

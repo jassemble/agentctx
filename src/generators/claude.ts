@@ -125,7 +125,7 @@ export function generateClaude(
   parts.push('All context lives in `.agentctx/context/`. Read ONLY what\'s relevant to your current task:');
   parts.push('');
 
-  // Task-based routing
+  // Task-based routing — detect which skill convention dirs exist from config.context paths
   parts.push('### By task type');
   parts.push('| Working on | Read first | Also read |');
   parts.push('|---|---|---|');
@@ -133,18 +133,31 @@ export function generateClaude(
   const lang = config.project.language || '';
   const framework = config.project.framework || '';
 
-  if (framework === 'nextjs') {
-    parts.push('| React components, pages | `conventions/routing.md` (Quick Rules) | `conventions/tailwind.md` if styling |');
-    parts.push('| Data fetching, APIs | `conventions/data-fetching.md` (Quick Rules) | `conventions/typescript.md` |');
+  // Detect which namespaced skill directories exist in the context paths
+  const conventionDirs = new Set<string>();
+  const referenceDirs = new Set<string>();
+  for (const p of config.context) {
+    const convMatch = p.match(/context\/conventions\/([^/]+)\//);
+    if (convMatch) conventionDirs.add(convMatch[1]);
+    const refMatch = p.match(/context\/references\/([^/]+)\//);
+    if (refMatch) referenceDirs.add(refMatch[1]);
   }
-  if (hasConventions) {
-    parts.push('| Styling, CSS, layout | `conventions/tailwind.md` or `conventions/design-principles.md` | `references/color.md`, `references/spacing-layout.md` |');
+
+  if (framework === 'nextjs' || conventionDirs.has('nextjs')) {
+    parts.push('| React pages/routes | `conventions/nextjs/` (Quick Rules) | `references/nextjs/` |');
+    parts.push('| Data fetching, APIs | `conventions/nextjs/` (Quick Rules) | `conventions/typescript/` |');
   }
-  if (lang === 'typescript' || lang === 'javascript') {
-    parts.push('| TypeScript/JS logic | `conventions/typescript.md` (Quick Rules) | relevant `modules/*.md` |');
+  if (conventionDirs.has('design') || conventionDirs.has('tailwind')) {
+    const readFirst = conventionDirs.has('design') ? '`conventions/design/`' : '`conventions/tailwind/`';
+    const alsoRead = referenceDirs.has('design') ? '`references/design/`' : '';
+    const tailwindPart = conventionDirs.has('tailwind') && conventionDirs.has('design') ? ' or `conventions/tailwind/`' : '';
+    parts.push(`| Styling/CSS | ${readFirst}${tailwindPart} | ${alsoRead} |`);
+  }
+  if (lang === 'typescript' || lang === 'javascript' || conventionDirs.has('typescript')) {
+    parts.push('| TypeScript logic | `conventions/typescript/` (Quick Rules) | relevant `modules/*.md` |');
   }
   if (lang === 'python') {
-    parts.push('| Python code | `conventions/endpoints.md` or `conventions/models.md` | relevant `modules/*.md` |');
+    parts.push('| Python code | `conventions/python-fastapi/` | relevant `modules/*.md` |');
   }
   parts.push('| New feature area | `modules/*.md` (check what exists) | `architecture.md`, `decisions.md` |');
   parts.push('| Starting a session | `status.md` (what happened last) | Module Index below |');
@@ -155,7 +168,7 @@ export function generateClaude(
   parts.push('| File location | Context |');
   parts.push('|---|---|');
   if (hasConventions) {
-    parts.push('| `conventions/*.md` | Read Quick Rules section always, full Patterns section when implementing |');
+    parts.push('| `conventions/{skill}/*.md` | Read Quick Rules section always, full Patterns section when implementing |');
   }
   if (hasModules) {
     parts.push('| `modules/*.md` | Read the specific module for the area you\'re working in |');
@@ -164,7 +177,7 @@ export function generateClaude(
     parts.push('| `agents/*.md` | Read matching specialist for the task |');
   }
   if (hasReferences) {
-    parts.push('| `references/*.md` | Look up syntax or patterns when needed |');
+    parts.push('| `references/{skill}/*.md` | Look up syntax or patterns when needed |');
   }
   parts.push('');
 
