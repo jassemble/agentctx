@@ -63,6 +63,16 @@ program
     await lintCommand(options);
   });
 
+program
+  .command('test')
+  .description('Test convention compliance via promptfoo (requires: npm i -g promptfoo)')
+  .option('--generate', 'Only generate test config, don\'t run')
+  .option('--ci', 'CI mode — exit 1 on failures, no cache')
+  .action(async (options) => {
+    const { testCommand } = await import('./commands/test.js');
+    await testCommand(options);
+  });
+
 // ── Info ──────────────────────────────────────────────────────────────
 
 program
