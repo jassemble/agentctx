@@ -1157,10 +1157,24 @@ function getJS(): string {
       var searchOpt = target.closest('[data-search-opt]');
       if (searchOpt) {
         searchOpt.classList.toggle('active');
-        // Re-trigger search
         var searchInput = document.getElementById('ctx-search');
         if (searchInput && searchInput.value.length >= 2) {
           searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        return;
+      }
+
+      // Search toolbar actions
+      var searchAction = target.closest('[data-search-action]');
+      if (searchAction) {
+        var action = searchAction.dataset.searchAction;
+        if (action === 'collapse-all') {
+          document.querySelectorAll('.search-file-group, .ctx-folder').forEach(function(g) { g.classList.add('collapsed'); });
+        } else if (action === 'expand-all') {
+          document.querySelectorAll('.search-file-group, .ctx-folder').forEach(function(g) { g.classList.remove('collapsed'); });
+        } else if (action === 'clear') {
+          var searchInput = document.getElementById('ctx-search');
+          if (searchInput) { searchInput.value = ''; searchInput.dispatchEvent(new Event('input', { bubbles: true })); }
         }
         return;
       }
@@ -1216,7 +1230,12 @@ function getJS(): string {
 
         // Full-text search (debounced)
         searchTimeout = setTimeout(function() {
-          fetch('/api/search?q=' + encodeURIComponent(q))
+          var caseSensitive = document.querySelector('[data-search-opt="case"].active') ? 'true' : '';
+          var wholeWord = document.querySelector('[data-search-opt="word"].active') ? 'true' : '';
+          var params = 'q=' + encodeURIComponent(q);
+          if (caseSensitive) params += '&case=1';
+          if (wholeWord) params += '&word=1';
+          fetch('/api/search?' + params)
             .then(function(r) { return r.json(); })
             .then(function(results) {
               var fileList = document.getElementById('ctx-file-list');
@@ -1574,12 +1593,18 @@ function getJS(): string {
 
     function renderContextTree(el, files) {
       // Toolbar: toggle tree/flat + search
-      var toolbar = '<div class="ctx-toolbar">' +
-        '<button class="ctx-toolbar-btn' + (ctxViewMode === 'tree' ? ' active' : '') + '" data-ctx-mode="tree">Tree</button>' +
-        '<button class="ctx-toolbar-btn' + (ctxViewMode === 'flat' ? ' active' : '') + '" data-ctx-mode="flat">Flat</button>' +
-        '</div>' +
+      // Search toolbar — VS Code style
+      var toolbar = '<div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-2);border-bottom:1px solid var(--color-border);margin-bottom:var(--space-2)">' +
+        '<span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-secondary)">Search</span>' +
+        '<div style="display:flex;gap:2px">' +
+        '<button class="ctx-search-opt" data-search-action="collapse-all" title="Collapse All">&#x2261;</button>' +
+        '<button class="ctx-search-opt" data-search-action="expand-all" title="Expand All">&#x2263;</button>' +
+        '<button class="ctx-search-opt" data-search-action="clear" title="Clear Search">&times;</button>' +
+        '<button class="ctx-toolbar-btn' + (ctxViewMode === 'tree' ? ' active' : '') + '" data-ctx-mode="tree" title="Tree View" style="margin-left:4px">&#x1F332;</button>' +
+        '<button class="ctx-toolbar-btn' + (ctxViewMode === 'flat' ? ' active' : '') + '" data-ctx-mode="flat" title="Flat View">&#x2630;</button>' +
+        '</div></div>' +
         '<div class="ctx-search-bar">' +
-        '<input class="ctx-search" id="ctx-search" placeholder="Search files and content..." />' +
+        '<input class="ctx-search" id="ctx-search" placeholder="Search..." />' +
         '<div class="ctx-search-opts">' +
         '<button class="ctx-search-opt" data-search-opt="case" title="Match Case">Aa</button>' +
         '<button class="ctx-search-opt" data-search-opt="word" title="Match Whole Word">ab</button>' +
@@ -2061,11 +2086,23 @@ async function handleAPIRequest(
 
   // API: Full-text search across context files
   if (url.pathname === '/api/search') {
-    const q = (url.searchParams.get('q') || '').toLowerCase();
-    if (q.length < 2) { jsonResponse(res, []); return true; }
+    const rawQ = url.searchParams.get('q') || '';
+    if (rawQ.length < 2) { jsonResponse(res, []); return true; }
+    const caseSensitive = url.searchParams.get('case') === '1';
+    const wholeWord = url.searchParams.get('word') === '1';
+    const q = caseSensitive ? rawQ : rawQ.toLowerCase();
 
     const contextDir = join(projectRoot, '.agentctx', 'context');
     const results: { path: string; matches: { line: number; text: string }[] }[] = [];
+
+    function lineMatches(line: string): boolean {
+      const target = caseSensitive ? line : line.toLowerCase();
+      if (wholeWord) {
+        const wordRegex = new RegExp(`\\b${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, caseSensitive ? '' : 'i');
+        return wordRegex.test(line);
+      }
+      return target.includes(q);
+    }
 
     async function searchDir(dir: string): Promise<void> {
       if (!existsSync(dir)) return;
@@ -2079,7 +2116,7 @@ async function handleAPIRequest(
             const content = await readFile(fullPath, 'utf-8');
             const matches: { line: number; text: string }[] = [];
             content.split('\n').forEach((line, i) => {
-              if (line.toLowerCase().includes(q)) {
+              if (lineMatches(line)) {
                 matches.push({ line: i + 1, text: line.trim().slice(0, 150) });
               }
             });
