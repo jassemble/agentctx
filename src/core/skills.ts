@@ -249,7 +249,7 @@ export async function composeSkills(
           `Skill command file not found: ${cmdPath} in skill "${skill.yaml.name}" (resolved to ${fullPath})`,
         );
       }
-      commands.push({ relativePath: filename, content });
+      commands.push({ relativePath: join(skill.yaml.name, filename), content });
     }
 
     // Load scaffold files
