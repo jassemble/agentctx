@@ -1173,10 +1173,21 @@ function getJS(): string {
       var searchAction = target.closest('[data-search-action]');
       if (searchAction) {
         var action = searchAction.dataset.searchAction;
-        if (action === 'collapse-all') {
-          document.querySelectorAll('.search-file-group, .ctx-folder').forEach(function(g) { g.classList.add('collapsed'); });
-        } else if (action === 'expand-all') {
-          document.querySelectorAll('.search-file-group, .ctx-folder').forEach(function(g) { g.classList.remove('collapsed'); });
+        if (action === 'toggle-collapse') {
+          // Toggle: if any expanded, collapse all. If all collapsed, expand all.
+          var groups = document.querySelectorAll('.search-file-group, .ctx-folder');
+          var anyExpanded = false;
+          groups.forEach(function(g) { if (!g.classList.contains('collapsed')) anyExpanded = true; });
+          groups.forEach(function(g) {
+            if (anyExpanded) g.classList.add('collapsed');
+            else g.classList.remove('collapsed');
+          });
+          // Swap icon title
+          searchAction.title = anyExpanded ? 'Expand All' : 'Collapse All';
+        } else if (action === 'toggle-view') {
+          ctxViewMode = ctxViewMode === 'tree' ? 'flat' : 'tree';
+          var el = document.getElementById('context-content');
+          renderContextTree(el, ctxFiles);
         } else if (action === 'clear') {
           var searchInput = document.getElementById('ctx-search');
           if (searchInput) { searchInput.value = ''; searchInput.dispatchEvent(new Event('input', { bubbles: true })); }
@@ -1184,7 +1195,7 @@ function getJS(): string {
         return;
       }
 
-      // Context view mode toggle
+      // Context view mode toggle (legacy — kept for backwards compat)
       var ctxMode = target.closest('[data-ctx-mode]');
       if (ctxMode) {
         ctxViewMode = ctxMode.dataset.ctxMode;
@@ -1602,11 +1613,9 @@ function getJS(): string {
       var toolbar = '<div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-2);border-bottom:1px solid var(--color-border);margin-bottom:var(--space-2)">' +
         '<span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-secondary)">Search</span>' +
         '<div style="display:flex;gap:2px">' +
-        '<button class="ctx-search-opt" data-search-action="collapse-all" title="Collapse All"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M9 9H5v1h4V9zM14 1v14H2V1h12zm-1 5H3v9h10V6z" fill="currentColor"/></svg></button>' +
-        '<button class="ctx-search-opt" data-search-action="expand-all" title="Expand All"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M9 9H5v1h4V9zM7 12H5v1h2v-1zm7-11v14H2V1h12zm-1 5H3v9h10V6zM9 4H5v1h4V4z" fill="currentColor"/></svg></button>' +
-        '<button class="ctx-search-opt" data-search-action="clear" title="Clear Search"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.11 9.34l-.7.71L8 8.71l-2.41 2.34-.71-.71L7.29 8 4.88 5.66l.71-.71L8 7.29l2.41-2.34.7.71L8.71 8l2.4 2.34z" fill="currentColor"/></svg></button>' +
-        '<button class="ctx-toolbar-btn' + (ctxViewMode === 'tree' ? ' active' : '') + '" data-ctx-mode="tree" title="Tree View" style="margin-left:4px"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M1.5 1h3v3h-3V1zm0 5h3v3h-3V6zm0 5h3v3h-3v-3zM6 2h9v1H6V2zm0 5h9v1H6V7zm0 5h9v1H6v-1z" fill="currentColor"/></svg></button>' +
-        '<button class="ctx-toolbar-btn' + (ctxViewMode === 'flat' ? ' active' : '') + '" data-ctx-mode="flat" title="Flat View"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 3h12v1H2V3zm0 4h12v1H2V7zm0 4h12v1H2v-1z" fill="currentColor"/></svg></button>' +
+        '<button class="ctx-search-opt" data-search-action="toggle-collapse" title="Toggle Collapse"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M9 9H5v1h4V9zM14 1v14H2V1h12zm-1 5H3v9h10V6z" fill="currentColor"/></svg></button>' +
+        '<button class="ctx-search-opt" data-search-action="clear" title="Clear"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.11 9.34l-.7.71L8 8.71l-2.41 2.34-.71-.71L7.29 8 4.88 5.66l.71-.71L8 7.29l2.41-2.34.7.71L8.71 8l2.4 2.34z" fill="currentColor"/></svg></button>' +
+        '<button class="ctx-search-opt" data-search-action="toggle-view" title="' + (ctxViewMode === 'tree' ? 'Switch to Flat' : 'Switch to Tree') + '">' + (ctxViewMode === 'tree' ? '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 3h12v1H2V3zm0 4h12v1H2V7zm0 4h12v1H2v-1z" fill="currentColor"/></svg>' : '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M1.5 1h3v3h-3V1zm0 5h3v3h-3V6zm0 5h3v3h-3v-3zM6 2h9v1H6V2zm0 5h9v1H6V7zm0 5h9v1H6v-1z" fill="currentColor"/></svg>') + '</button>' +
         '</div></div>' +
         '<div class="ctx-search-bar">' +
         '<input class="ctx-search" id="ctx-search" placeholder="Search..." />' +
