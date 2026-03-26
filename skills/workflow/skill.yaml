@@ -27,18 +27,18 @@ commands:
   - commands/orchestrate.md
 scaffolds:
   - src: scaffolds/INDEX.md
-    dest: specs/INDEX.md
+    dest: .agentctx/specs/INDEX.md
   - src: scaffolds/feature-spec-template.md
-    dest: specs/_templates/feature-spec.md
+    dest: .agentctx/specs/_templates/feature-spec.md
   - src: scaffolds/backend-spec-template.md
-    dest: specs/_templates/backend-spec.md
+    dest: .agentctx/specs/_templates/backend-spec.md
   - src: scaffolds/frontend-spec-template.md
-    dest: specs/_templates/frontend-spec.md
+    dest: .agentctx/specs/_templates/frontend-spec.md
   - src: scaffolds/mobile-spec-template.md
-    dest: specs/_templates/mobile-spec.md
+    dest: .agentctx/specs/_templates/mobile-spec.md
   - src: scaffolds/qa-spec-template.md
-    dest: specs/_templates/qa-spec.md
+    dest: .agentctx/specs/_templates/qa-spec.md
   - src: scaffolds/devops-spec-template.md
-    dest: specs/_templates/devops-spec.md
+    dest: .agentctx/specs/_templates/devops-spec.md
   - src: scaffolds/brd-template.md
-    dest: specs/_templates/brd-template.md
+    dest: .agentctx/specs/_templates/brd-template.md

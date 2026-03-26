@@ -43,7 +43,7 @@ Before spawning any agents, define the contracts between teams. This is the most
 - Pagination: cursor vs offset, response shape
 - Naming conventions: camelCase for JSON, kebab-case for URLs
 
-Write all contracts to a temporary file: `specs/{NNNN}-contracts.md` for reference.
+Write all contracts to a temporary file: `.agentctx/specs/{NNNN}-contracts.md` for reference.
 
 ---
 
@@ -97,7 +97,7 @@ While agents are working:
 - If an agent needs a contract change, pause and coordinate:
   1. The requesting agent proposes the change
   2. All consuming agents confirm they can accommodate
-  3. Update `specs/{NNNN}-contracts.md`
+  3. Update `.agentctx/specs/{NNNN}-contracts.md`
   4. Notify all affected agents of the change
 - Track completion status of each agent
 - The QA agent validates test cases against contracts in parallel — it does NOT wait for implementation to finish

@@ -3,7 +3,7 @@ Generate a comprehensive test plan from a feature specification.
 ## Steps
 
 1. Read the spec file: $ARGUMENTS
-   - If no argument, check `specs/INDEX.md` for in-progress specs
+   - If no argument, check `.agentctx/specs/INDEX.md` for in-progress specs
 2. Read the acceptance criteria from the spec
 3. For each acceptance criterion, generate test cases:
    - **Happy path**: the normal expected behavior
@@ -18,7 +18,7 @@ Generate a comprehensive test plan from a feature specification.
    - Setup/preconditions
    - Action
    - Expected result
-6. Write the test plan to `specs/_templates/` or alongside the spec
+6. Write the test plan to `.agentctx/specs/_templates/` or alongside the spec
 7. Print a summary: total test cases by type
 
 ## Important

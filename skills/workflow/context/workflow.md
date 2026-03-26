@@ -31,22 +31,22 @@ All feature work follows a spec-first approach. Never implement without a spec.
 
 ### Spec Lifecycle
 
-All specs live in `specs/` directory with status-based naming:
-- `specs/draft-NNNN-name.md` — created, not yet approved
-- `specs/approved-NNNN-name.md` — reviewed and ready to implement
-- `specs/in-progress-NNNN-name.md` — currently being worked on
-- `specs/completed-NNNN-name.md` — implementation finished
+All specs live in `.agentctx/specs/` directory with status-based naming:
+- `.agentctx/specs/draft-NNNN-name.md` — created, not yet approved
+- `.agentctx/specs/approved-NNNN-name.md` — reviewed and ready to implement
+- `.agentctx/specs/in-progress-NNNN-name.md` — currently being worked on
+- `.agentctx/specs/completed-NNNN-name.md` — implementation finished
 
-`specs/INDEX.md` is the master tracker of all specs and their status.
+`.agentctx/specs/INDEX.md` is the master tracker of all specs and their status.
 
 ### Team-Specific Specs
 
 For features that span multiple teams, use `/breakdown` to create child specs:
-- `specs/_templates/backend-spec.md` — API endpoints, services, database
-- `specs/_templates/frontend-spec.md` — pages, components, state
-- `specs/_templates/mobile-spec.md` — screens, native, offline
-- `specs/_templates/qa-spec.md` — test matrix, edge cases, performance
-- `specs/_templates/devops-spec.md` — infrastructure, CI/CD, monitoring
+- `.agentctx/specs/_templates/backend-spec.md` — API endpoints, services, database
+- `.agentctx/specs/_templates/frontend-spec.md` — pages, components, state
+- `.agentctx/specs/_templates/mobile-spec.md` — screens, native, offline
+- `.agentctx/specs/_templates/qa-spec.md` — test matrix, edge cases, performance
+- `.agentctx/specs/_templates/devops-spec.md` — infrastructure, CI/CD, monitoring
 
 Child specs link to their parent via `parent_spec: NNNN` in frontmatter.
 

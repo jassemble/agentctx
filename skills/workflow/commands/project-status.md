@@ -9,7 +9,7 @@ Show a comprehensive project status overview.
    - List `feat/*` branches with their linked spec numbers
 
 2. **Specs Status**
-   - Read `specs/INDEX.md`
+   - Read `.agentctx/specs/INDEX.md`
    - Count by status: draft, approved, in-progress, completed
    - List in-progress specs with their branch names
 

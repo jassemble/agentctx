@@ -9,7 +9,7 @@ Review the current implementation against spec acceptance criteria.
 
 2. Determine which spec to review:
    - If argument provided, use that spec: $ARGUMENTS
-   - Otherwise, find in-progress specs from `specs/INDEX.md`
+   - Otherwise, find in-progress specs from `.agentctx/specs/INDEX.md`
 3. Read the spec file — focus on the acceptance criteria
 4. Read the git diff for the current branch: `git diff main...HEAD`
 5. For each acceptance criterion:

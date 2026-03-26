@@ -3,7 +3,7 @@ Validate the implementation against the test plan and acceptance criteria.
 ## Steps
 
 1. Read the spec or test plan: $ARGUMENTS
-   - If no argument, find in-progress specs from `specs/INDEX.md`
+   - If no argument, find in-progress specs from `.agentctx/specs/INDEX.md`
 2. Read the actual test files in the codebase
 3. For each test case in the plan:
    - Check if a corresponding test exists in the codebase

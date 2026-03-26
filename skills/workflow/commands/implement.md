@@ -3,7 +3,7 @@ Implement a feature from an approved spec.
 ## Steps
 
 1. Read the spec file: $ARGUMENTS
-   - If no argument provided, check `specs/INDEX.md` for approved specs and ask which one
+   - If no argument provided, check `.agentctx/specs/INDEX.md` for approved specs and ask which one
    - **Enforcement gate**: Check the spec's `status` field in the frontmatter:
      - If `draft` — STOP. Tell the user: "This spec is still a draft. Run `/approve {spec-path}` to approve it before implementation. Approval ensures requirements are reviewed and agreed upon."
      - If `in-progress` — warn the user it's already being implemented. Ask if they want to continue.
@@ -48,7 +48,7 @@ Implement a feature from an approved spec.
    - Rename the spec file from `approved-{NNNN}-{name}.md` to `in-progress-{NNNN}-{name}.md`
      - Use `git mv` if the file is tracked, otherwise regular mv
    - Update the `status` field in the spec frontmatter to `in-progress`
-   - Update `specs/INDEX.md` status column to `in-progress`
+   - Update `.agentctx/specs/INDEX.md` status column to `in-progress`
 
 8. Convert acceptance criteria into a task list and plan the implementation order
 
@@ -71,7 +71,7 @@ Implement a feature from an approved spec.
     - Rename the spec file from `in-progress-{NNNN}-{name}.md` to `completed-{NNNN}-{name}.md`
       - Use `git mv` if the file is tracked, otherwise regular mv
     - Update the `status` field in the spec frontmatter to `completed`
-    - Update `specs/INDEX.md` status column to `completed`
+    - Update `.agentctx/specs/INDEX.md` status column to `completed`
 
 12. Auto-checkpoint:
     ```bash
@@ -83,14 +83,14 @@ Implement a feature from an approved spec.
 13. Print a summary:
     ```
     Implementation complete: {title}
-    Spec: specs/completed-{NNNN}-{name}.md
+    Spec: .agentctx/specs/completed-{NNNN}-{name}.md
     Checkpoint: cp-{NNNN}-done
     Module file: .agentctx/context/modules/{feature}.md
 
     Files changed:
     - {list of files created/modified}
 
-    Next step: Run /review specs/completed-{NNNN}-{name}.md to validate
+    Next step: Run /review .agentctx/specs/completed-{NNNN}-{name}.md to validate
     ```
 
 ## Important

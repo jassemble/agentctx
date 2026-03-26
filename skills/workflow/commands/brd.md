@@ -5,15 +5,15 @@ A BRD captures the **business "why"** before the technical "what." Use this for 
 ## Steps
 
 1. **Read existing context** before writing:
-   - Check `specs/INDEX.md` for related specs
+   - Check `.agentctx/specs/INDEX.md` for related specs
    - Read `.agentctx/context/modules/` to understand what exists
    - Read `.agentctx/context/architecture.md` for system context
 
 2. Parse the feature description: $ARGUMENTS
 
-3. Determine the next BRD number by reading `specs/INDEX.md`
+3. Determine the next BRD number by reading `.agentctx/specs/INDEX.md`
 
-4. Create the BRD at `specs/draft-BRD-{NNNN}-{kebab-name}.md` using the template at `specs/_templates/brd-template.md`
+4. Create the BRD at `.agentctx/specs/draft-BRD-{NNNN}-{kebab-name}.md` using the template at `.agentctx/specs/_templates/brd-template.md`
 
 5. Fill in ALL sections:
    - **Business Context**: Why this feature matters — the problem, not the solution
@@ -24,11 +24,11 @@ A BRD captures the **business "why"** before the technical "what." Use this for 
    - **Priority**: P0 (critical/blocking) through P3 (nice-to-have)
    - **Dependencies**: What must exist before this can be built
 
-6. Update `specs/INDEX.md` with the new BRD entry
+6. Update `.agentctx/specs/INDEX.md` with the new BRD entry
 
 7. Print the BRD path and suggest next steps:
    ```
-   Created: specs/draft-BRD-0001-user-auth.md
+   Created: .agentctx/specs/draft-BRD-0001-user-auth.md
 
    Next steps:
    1. Review the BRD and run /approve to approve it

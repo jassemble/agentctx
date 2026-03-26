@@ -29,7 +29,7 @@ function broadcastReload(changedFile: string): void {
 
 function setupFileWatcher(projectRoot: string): void {
   const watchDirs = [
-    join(projectRoot, 'specs'),
+    join(projectRoot, '.agentctx', 'specs'),
     join(projectRoot, '.agentctx'),
   ];
 
@@ -77,7 +77,7 @@ interface SpecEntry {
 }
 
 async function getSpecs(projectRoot: string): Promise<{ specs: SpecEntry[] }> {
-  const specsDir = join(projectRoot, 'specs');
+  const specsDir = join(projectRoot, '.agentctx', 'specs');
   const specs: SpecEntry[] = [];
   const seen = new Set<string>();
 
@@ -97,7 +97,7 @@ async function getSpecs(projectRoot: string): Promise<{ specs: SpecEntry[] }> {
           const branch = branchMatch ? branchMatch[0] : `feat/${id}-${title.toLowerCase().replace(/\s+/g, '-')}`;
           // Try to find the path reference
           const pathMatch = line.match(/\[.*?\]\((.*?)\)/);
-          const specPath = pathMatch ? `specs/${pathMatch[1]}` : `specs/${status.toLowerCase()}-${id}-${title.toLowerCase().replace(/\s+/g, '-')}.md`;
+          const specPath = pathMatch ? `.agentctx/specs/${pathMatch[1]}` : `.agentctx/specs/${status.toLowerCase()}-${id}-${title.toLowerCase().replace(/\s+/g, '-')}.md`;
           seen.add(id);
           specs.push({ id, title: title.trim(), status: status.toLowerCase(), branch: branch.trim(), path: specPath });
         }
@@ -120,7 +120,7 @@ async function getSpecs(projectRoot: string): Promise<{ specs: SpecEntry[] }> {
             title,
             status: status.toLowerCase(),
             branch: `feat/${id}-${namePart}`,
-            path: `specs/${entry}`,
+            path: `.agentctx/specs/${entry}`,
           });
         }
       }
@@ -1206,7 +1206,7 @@ export async function dashboardCommand(options: DashboardOptions): Promise<void>
         const newPath = join(projectRoot, 'specs', newFilename);
         try {
           await rename(resolved, newPath);
-          jsonResponse(res, { ok: true, newPath: `specs/${newFilename}` });
+          jsonResponse(res, { ok: true, newPath: `.agentctx/specs/${newFilename}` });
         } catch (err) {
           jsonResponse(res, { error: String(err) }, 500);
         }
@@ -1257,7 +1257,7 @@ export async function dashboardCommand(options: DashboardOptions): Promise<void>
             const { type, title } = body as { type: string; title: string };
             if (!title) { jsonResponse(res, { error: 'Title required' }, 400); return; }
 
-            const specsDir = join(projectRoot, 'specs');
+            const specsDir = join(projectRoot, '.agentctx', 'specs');
             const templatesDir = join(specsDir, '_templates');
             await mkdir(specsDir, { recursive: true });
 
@@ -1299,7 +1299,7 @@ export async function dashboardCommand(options: DashboardOptions): Promise<void>
               await writeFile(indexPath, index, 'utf-8');
             } catch { /* no index */ }
 
-            jsonResponse(res, { ok: true, path: `specs/${filename}`, id: nextId });
+            jsonResponse(res, { ok: true, path: `.agentctx/specs/${filename}`, id: nextId });
           } catch (err) {
             jsonResponse(res, { error: String(err) }, 500);
           }

@@ -32,7 +32,7 @@ For parallel implementation with agent teams, use `/build-with-team` instead.
 4. After all areas are done:
    - Run full test suite
    - Update spec status to completed
-   - Update `specs/INDEX.md`
+   - Update `.agentctx/specs/INDEX.md`
    - Update `.agentctx/context/status.md`
    - Create final checkpoint: `cp-{spec-id}-done`
 

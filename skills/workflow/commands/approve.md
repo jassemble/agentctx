@@ -6,7 +6,7 @@ Approve a draft spec, gating it for implementation.
 
 1. Determine the spec to approve:
    - If argument provided, use that path: $ARGUMENTS
-   - Otherwise, read `specs/INDEX.md` and find specs with status `draft`
+   - Otherwise, read `.agentctx/specs/INDEX.md` and find specs with status `draft`
    - If multiple drafts exist, list them and ask the user which to approve
    - If no drafts exist, tell the user and stop
 
@@ -30,7 +30,7 @@ Approve a draft spec, gating it for implementation.
      - If not tracked: rename the file using standard mv
    - Update the spec frontmatter: set `status: approved`
 
-7. Update `specs/INDEX.md`:
+7. Update `.agentctx/specs/INDEX.md`:
    - Find the row matching this spec number
    - Change the Status column from `draft` to `approved`
    - Update the filename/link if INDEX.md references it
@@ -38,8 +38,8 @@ Approve a draft spec, gating it for implementation.
 8. Print confirmation:
    ```
    Spec {NNNN} approved: {title}
-   File: specs/approved-{NNNN}-{name}.md
-   Next step: Run /implement specs/approved-{NNNN}-{name}.md
+   File: .agentctx/specs/approved-{NNNN}-{name}.md
+   Next step: Run /implement .agentctx/specs/approved-{NNNN}-{name}.md
    ```
 
 ## Important

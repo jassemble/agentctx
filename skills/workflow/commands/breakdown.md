@@ -3,7 +3,7 @@ Break down an approved spec into team-specific child specs.
 ## Steps
 
 1. Read the parent spec: $ARGUMENTS
-   - If no argument provided, check `specs/INDEX.md` for approved specs and ask which one
+   - If no argument provided, check `.agentctx/specs/INDEX.md` for approved specs and ask which one
    - The spec MUST be `approved` — if it is `draft`, tell the user to run `/approve` first
    - If the spec is already broken down (has child specs in INDEX.md), warn the user
 
@@ -20,12 +20,12 @@ Break down an approved spec into team-specific child specs.
    - **QA**: always include QA — every feature needs tests
    - **DevOps**: if requirements mention deployment, infrastructure, environment variables, CI/CD, monitoring
 
-4. Read the next available spec number from `specs/INDEX.md`
+4. Read the next available spec number from `.agentctx/specs/INDEX.md`
 
 5. For each affected team, create a child spec:
-   - Use the template from `specs/_templates/{team}-spec.md`
-   - If the template does not exist, use `specs/_templates/feature-spec.md` as fallback
-   - Set the filename: `specs/draft-{NNNN}-{parent-kebab-name}-{team}.md`
+   - Use the template from `.agentctx/specs/_templates/{team}-spec.md`
+   - If the template does not exist, use `.agentctx/specs/_templates/feature-spec.md` as fallback
+   - Set the filename: `.agentctx/specs/draft-{NNNN}-{parent-kebab-name}-{team}.md`
    - Fill in the frontmatter:
      - `id`: next available number
      - `title`: "{Parent Title} — {Team}" (e.g., "User Auth — Backend")
@@ -39,7 +39,7 @@ Break down an approved spec into team-specific child specs.
    - List only the affected files relevant to this team
    - In Dependencies, link back to the parent spec and list other child specs this depends on
 
-6. Update `specs/INDEX.md` with all child specs:
+6. Update `.agentctx/specs/INDEX.md` with all child specs:
    - Add each child spec as a new row
    - Include a note or column indicating the parent spec ID
 
