@@ -824,11 +824,40 @@ function getDashboardHTML(projectName: string): string {
         const res = await fetch('/api/spec?path=' + encodeURIComponent(path));
         const md = await res.text();
         currentEditPath = path;
+
+        // Parse status from frontmatter
+        const statusMatch = md.match(/^---[\\s\\S]*?status:\\s*(\\w[\\w-]*)/);
+        const status = statusMatch ? statusMatch[1] : 'draft';
+        const idMatch = md.match(/^---[\\s\\S]*?id:\\s*"?(\\d+)"?/);
+        const specId = idMatch ? idMatch[1] : '';
+
+        // Build status-aware action bar
+        let actions = '<button class="btn" onclick="editSpec(\\'' + esc(path) + '\\')">Edit</button>';
+
+        if (status === 'draft') {
+          actions += ' <button class="btn btn-green" onclick="approveSpec(\\'' + esc(path) + '\\')">Approve & Start</button>';
+        } else if (status === 'approved') {
+          actions += ' <button class="btn btn-accent" onclick="showImplement(\\'' + esc(specId) + '\\', \\'feat/' + esc(specId) + '\\')">Implement</button>';
+        } else if (status === 'in-progress') {
+          actions += ' <span style="color:var(--yellow);font-size:12px;margin-left:8px">In Progress</span>';
+        } else if (status === 'completed') {
+          actions += ' <span style="color:var(--green);font-size:12px;margin-left:8px">Completed</span>';
+        }
+
+        // Status badge
+        const badgeColor = status === 'draft' ? 'var(--text-dim)' : status === 'approved' ? 'var(--accent)' : status === 'in-progress' ? 'var(--yellow)' : 'var(--green)';
+        const badge = '<span style="background:' + badgeColor + '22;color:' + badgeColor + ';padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">' + status + '</span>';
+
         document.getElementById('modal-content').innerHTML =
-          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)">' +
-          '<span style="font-size:12px;color:var(--text-dim);font-family:monospace">' + esc(path) + '</span>' +
-          '<button class="btn" onclick="editSpec(\\'' + esc(path) + '\\')">Edit</button></div>' +
-          '<div class="md">' + marked.parse(md) + '</div>';
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)">' +
+            '<div style="display:flex;align-items:center;gap:10px">' +
+              '<span style="font-size:13px;color:var(--text-dim);font-family:monospace">' + esc(path) + '</span>' +
+              badge +
+            '</div>' +
+            '<div style="display:flex;gap:8px">' + actions + '</div>' +
+          '</div>' +
+          '<div class="md" style="max-height:60vh;overflow-y:auto">' + marked.parse(md) + '</div>';
+
         document.getElementById('modal-overlay').classList.add('show');
       } catch {
         showToast('Could not load spec');
@@ -867,8 +896,9 @@ function getDashboardHTML(projectName: string): string {
       try {
         const res = await fetch('/api/spec/approve?path=' + encodeURIComponent(path), { method: 'POST' });
         if (res.ok) {
-          showToast('Spec approved');
+          showToast('Spec approved — ready to implement');
           loadSpecs();
+          viewSpec(path); // Refresh modal to show Implement button
         } else {
           const data = await res.json();
           showToast(data.error || 'Failed to approve');
