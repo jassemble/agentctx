@@ -1086,7 +1086,7 @@ function getJS(): string {
       var implementBtn = target.closest('[data-implement]');
       if (implementBtn) {
         e.stopPropagation();
-        showImplement(implementBtn.dataset.implementId, implementBtn.dataset.implement);
+        showImplement(implementBtn.dataset.implement, implementBtn.dataset.implementId);
         return;
       }
 
@@ -1121,7 +1121,7 @@ function getJS(): string {
       // Modal action: implement from modal
       var modalImplementBtn = target.closest('[data-modal-implement]');
       if (modalImplementBtn) {
-        showImplement(modalImplementBtn.dataset.modalImplementId, modalImplementBtn.dataset.modalImplement);
+        showImplement(modalImplementBtn.dataset.modalImplement, modalImplementBtn.dataset.modalImplementId);
         return;
       }
 
@@ -1378,7 +1378,7 @@ function getJS(): string {
           if (spec.status === 'draft') {
             html += '<div class="spec-actions"><button class="btn btn-success" data-approve="' + esc(spec.path) + '">Approve</button></div>';
           } else if (spec.status === 'approved') {
-            html += '<div class="spec-actions"><button class="btn" data-implement="' + esc(spec.branch) + '" data-implement-id="' + esc(spec.id) + '">Implement</button></div>';
+            html += '<div class="spec-actions"><button class="btn" data-implement="' + esc(spec.path) + '" data-implement-id="' + esc(spec.id) + '">Implement</button></div>';
           }
 
           html += '</div>';
@@ -1442,17 +1442,18 @@ function getJS(): string {
         var idMatch = md.match(/^---[\\s\\S]*?id:\\s*"?(\\d+)"?/);
         var specId = idMatch ? idMatch[1] : '';
 
-        // Build action buttons based on status
-        var actions = '<button class="btn" data-edit-spec="' + esc(path) + '">Edit</button>';
+        // Build action buttons based on status — edit only on draft
+        var actions = '';
 
         if (status === 'draft') {
+          actions += '<button class="btn" data-edit-spec="' + esc(path) + '">Edit</button>';
           actions += ' <button class="btn btn-success" data-modal-approve="' + esc(path) + '">Approve</button>';
         } else if (status === 'approved') {
-          actions += ' <button class="btn btn-primary" data-modal-implement="feat/' + esc(specId) + '" data-modal-implement-id="' + esc(specId) + '">Implement</button>';
+          actions += '<button class="btn btn-primary" data-modal-implement="' + esc(path) + '" data-modal-implement-id="' + esc(specId) + '">Implement</button>';
         } else if (status === 'in-progress') {
-          actions += ' <span style="color:var(--color-warning);font-size:12px;margin-left:8px">In Progress</span>';
+          actions += '<span style="color:var(--color-warning);font-size:12px">In Progress</span>';
         } else if (status === 'completed') {
-          actions += ' <span style="color:var(--color-success);font-size:12px;margin-left:8px">Completed</span>';
+          actions += '<span style="color:var(--color-success);font-size:12px">Completed</span>';
         }
 
         var mc = document.getElementById('modal-content');
@@ -1529,16 +1530,23 @@ function getJS(): string {
       }
     }
 
-    function showImplement(id, branch) {
+    function showImplement(specPath, id) {
       var mc = document.getElementById('modal-content');
       mc.innerHTML =
-        '<h2 style="margin-bottom:16px">Implement Spec #' + esc(id) + '</h2>' +
-        '<p style="margin-bottom:12px;color:var(--color-text-secondary)">Run these commands to start implementation:</p>' +
-        '<pre style="background:var(--color-surface);border:1px solid var(--color-border);border-radius:0;padding:16px;font-family:var(--font-mono);font-size:13px;line-height:1.6">' +
-        'git checkout -b ' + esc(branch) + '\\n' +
-        '# Start coding the spec\\n' +
-        '# When done, update spec status to in-progress' +
-        '</pre>';
+        '<h2 style="margin-bottom:var(--space-4)">Implement Spec #' + esc(id) + '</h2>' +
+        '<p style="margin-bottom:var(--space-4);color:var(--color-text-secondary)">Run this in Claude Code to start implementation:</p>' +
+        '<div style="background:var(--color-surface);border:1px solid var(--color-border);padding:var(--space-4);font-family:var(--font-mono);font-size:13px;line-height:1.8;margin-bottom:var(--space-4)">' +
+        '<div style="color:var(--color-text-secondary);margin-bottom:var(--space-2)"># Claude Code slash command:</div>' +
+        '<div style="color:var(--color-primary);font-weight:500">/workflow/implement ' + esc(specPath) + '</div>' +
+        '</div>' +
+        '<p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:var(--space-3)">This will:</p>' +
+        '<ul style="font-size:12px;color:var(--color-text-secondary);padding-left:var(--space-4);margin-bottom:var(--space-4)">' +
+        '<li>Create branch <code style="color:var(--color-primary)">feat/' + esc(id) + '-...</code></li>' +
+        '<li>Read project conventions and modules</li>' +
+        '<li>Check for matching agent specialist</li>' +
+        '<li>Implement with auto-checkpoint on completion</li>' +
+        '</ul>' +
+        '<p style="font-size:12px;color:var(--color-text-secondary)">Or in Cursor: ask the AI to read <code>' + esc(specPath) + '</code> and implement it.</p>';
       document.getElementById('modal-overlay').classList.add('show');
     }
 
