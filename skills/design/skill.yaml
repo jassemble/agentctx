@@ -16,6 +16,19 @@ commands:
   - commands/critique.md
   - commands/harden.md
   - commands/optimize.md
+  - commands/adapt.md
+  - commands/animate.md
+  - commands/arrange.md
+  - commands/bolder.md
+  - commands/clarify.md
+  - commands/colorize.md
+  - commands/delight.md
+  - commands/distill.md
+  - commands/extract.md
+  - commands/onboard.md
+  - commands/overdrive.md
+  - commands/quieter.md
+  - commands/typeset.md
 references:
   - reference/typography.md
   - reference/color.md
