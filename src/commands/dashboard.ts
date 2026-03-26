@@ -719,6 +719,14 @@ function getCSS(): string {
     .ctx-file svg { flex-shrink: 0; color: var(--color-text-secondary); }
     .ctx-file.active svg { color: var(--color-primary); }
     .ctx-viewer-header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--color-text-secondary); font-family: var(--font-mono); margin-bottom: var(--space-4); padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-border); }
+    .search-results { padding: var(--space-2); }
+    .search-result { padding: var(--space-2); border-radius: 5px; cursor: pointer; margin-bottom: 2px; }
+    .search-result:hover { background: var(--color-surface); }
+    .search-result-file { font-size: 12px; font-weight: 500; color: var(--color-primary); margin-bottom: 2px; }
+    .search-result-line { font-size: 11px; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 12px; }
+    .search-result-line .line-num { color: var(--color-text-secondary); font-family: var(--font-mono); margin-right: 6px; font-size: 10px; }
+    .search-highlight { background: rgba(210, 153, 34, 0.25); color: #d29922; border-radius: 2px; padding: 0 1px; }
+    .search-count { font-size: 11px; color: var(--color-text-secondary); padding: var(--space-2); }
 
     /* Activity tab */
     .timeline { max-width: 700px; }
@@ -1141,25 +1149,83 @@ function getJS(): string {
       }
     });
 
-    // Context search filter
+    // Context search — file filter (short queries) + full-text search (2+ chars, debounced)
+    var searchTimeout = null;
     document.addEventListener('input', function(e) {
       if (e.target && e.target.id === 'ctx-search') {
-        var q = e.target.value.toLowerCase();
-        var items = document.querySelectorAll('.ctx-file');
-        items.forEach(function(item) {
-          var path = (item.dataset.ctxPath || '').toLowerCase();
-          var name = item.textContent.toLowerCase();
-          item.style.display = (path.includes(q) || name.includes(q)) ? '' : 'none';
-        });
-        // Show/hide folders based on visible children
-        document.querySelectorAll('.ctx-folder').forEach(function(folder) {
-          var hasVisible = false;
-          folder.querySelectorAll('.ctx-file').forEach(function(f) {
-            if (f.style.display !== 'none') hasVisible = true;
+        var q = e.target.value;
+        clearTimeout(searchTimeout);
+
+        if (q.length < 2) {
+          // Filter mode — match filenames
+          var fileList = document.getElementById('ctx-file-list');
+          if (fileList) fileList.style.display = '';
+          var searchResults = document.getElementById('ctx-search-results');
+          if (searchResults) searchResults.remove();
+
+          var ql = q.toLowerCase();
+          var items = document.querySelectorAll('.ctx-file');
+          items.forEach(function(item) {
+            var path = (item.dataset.ctxPath || '').toLowerCase();
+            var name = item.textContent.toLowerCase();
+            item.style.display = (path.includes(ql) || name.includes(ql)) ? '' : 'none';
           });
-          folder.style.display = hasVisible ? '' : 'none';
-          if (q && hasVisible) folder.classList.remove('collapsed');
-        });
+          document.querySelectorAll('.ctx-folder').forEach(function(folder) {
+            var hasVisible = false;
+            folder.querySelectorAll('.ctx-file').forEach(function(f) {
+              if (f.style.display !== 'none') hasVisible = true;
+            });
+            folder.style.display = hasVisible ? '' : 'none';
+            if (ql && hasVisible) folder.classList.remove('collapsed');
+          });
+          return;
+        }
+
+        // Full-text search (debounced)
+        searchTimeout = setTimeout(function() {
+          fetch('/api/search?q=' + encodeURIComponent(q))
+            .then(function(r) { return r.json(); })
+            .then(function(results) {
+              var fileList = document.getElementById('ctx-file-list');
+              if (fileList) fileList.style.display = 'none';
+
+              var existing = document.getElementById('ctx-search-results');
+              if (existing) existing.remove();
+
+              var html = '<div id="ctx-search-results" class="search-results">';
+              if (results.length === 0) {
+                html += '<div class="search-count">No results</div>';
+              } else {
+                var totalMatches = 0;
+                results.forEach(function(r) { totalMatches += r.matches.length; });
+                html += '<div class="search-count">' + totalMatches + ' results in ' + results.length + ' files</div>';
+                results.forEach(function(r) {
+                  html += '<div class="search-result" data-ctx-path="' + esc(r.path) + '">';
+                  html += '<div class="search-result-file">' + esc(r.path.replace('.agentctx/context/', '')) + '</div>';
+                  r.matches.forEach(function(m) {
+                    var escaped = esc(m.text);
+                    var idx = escaped.toLowerCase().indexOf(q.toLowerCase());
+                    var highlighted = escaped;
+                    if (idx >= 0) {
+                      highlighted = escaped.substring(0, idx) +
+                        '<span class="search-highlight">' + escaped.substring(idx, idx + q.length) + '</span>' +
+                        escaped.substring(idx + q.length);
+                    }
+                    html += '<div class="search-result-line"><span class="line-num">L' + m.line + '</span>' + highlighted + '</div>';
+                  });
+                  html += '</div>';
+                });
+              }
+              html += '</div>';
+
+              var tree = document.querySelector('.context-tree');
+              if (tree) {
+                var container = document.createElement('div');
+                container.innerHTML = html;
+                tree.appendChild(container.firstChild);
+              }
+            });
+        }, 300);
       }
     });
 
@@ -1936,6 +2002,49 @@ async function handleAPIRequest(
         jsonResponse(res, { error: String(err) }, 500);
       }
     });
+    return true;
+  }
+
+  // API: Full-text search across context files
+  if (url.pathname === '/api/search') {
+    const q = (url.searchParams.get('q') || '').toLowerCase();
+    if (q.length < 2) { jsonResponse(res, []); return true; }
+
+    const contextDir = join(projectRoot, '.agentctx', 'context');
+    const results: { path: string; matches: { line: number; text: string }[] }[] = [];
+
+    async function searchDir(dir: string): Promise<void> {
+      if (!existsSync(dir)) return;
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await searchDir(fullPath);
+        } else if (entry.name.endsWith('.md')) {
+          try {
+            const content = await readFile(fullPath, 'utf-8');
+            const matches: { line: number; text: string }[] = [];
+            content.split('\n').forEach((line, i) => {
+              if (line.toLowerCase().includes(q)) {
+                matches.push({ line: i + 1, text: line.trim().slice(0, 150) });
+              }
+            });
+            if (matches.length > 0) {
+              results.push({
+                path: relative(projectRoot, fullPath),
+                matches: matches.slice(0, 5),
+              });
+            }
+          } catch { /* skip */ }
+        }
+      }
+    }
+
+    await searchDir(contextDir);
+    // Also search specs
+    await searchDir(join(projectRoot, '.agentctx', 'specs'));
+
+    jsonResponse(res, results);
     return true;
   }
 
