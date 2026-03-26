@@ -1597,11 +1597,11 @@ function getJS(): string {
       var toolbar = '<div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-2);border-bottom:1px solid var(--color-border);margin-bottom:var(--space-2)">' +
         '<span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--color-text-secondary)">Search</span>' +
         '<div style="display:flex;gap:2px">' +
-        '<button class="ctx-search-opt" data-search-action="collapse-all" title="Collapse All">&#x2261;</button>' +
-        '<button class="ctx-search-opt" data-search-action="expand-all" title="Expand All">&#x2263;</button>' +
-        '<button class="ctx-search-opt" data-search-action="clear" title="Clear Search">&times;</button>' +
-        '<button class="ctx-toolbar-btn' + (ctxViewMode === 'tree' ? ' active' : '') + '" data-ctx-mode="tree" title="Tree View" style="margin-left:4px">&#x1F332;</button>' +
-        '<button class="ctx-toolbar-btn' + (ctxViewMode === 'flat' ? ' active' : '') + '" data-ctx-mode="flat" title="Flat View">&#x2630;</button>' +
+        '<button class="ctx-search-opt" data-search-action="collapse-all" title="Collapse All"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M9 9H5v1h4V9zM14 1v14H2V1h12zm-1 5H3v9h10V6z" fill="currentColor"/></svg></button>' +
+        '<button class="ctx-search-opt" data-search-action="expand-all" title="Expand All"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M9 9H5v1h4V9zM7 12H5v1h2v-1zm7-11v14H2V1h12zm-1 5H3v9h10V6zM9 4H5v1h4V4z" fill="currentColor"/></svg></button>' +
+        '<button class="ctx-search-opt" data-search-action="clear" title="Clear Search"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm3.11 9.34l-.7.71L8 8.71l-2.41 2.34-.71-.71L7.29 8 4.88 5.66l.71-.71L8 7.29l2.41-2.34.7.71L8.71 8l2.4 2.34z" fill="currentColor"/></svg></button>' +
+        '<button class="ctx-toolbar-btn' + (ctxViewMode === 'tree' ? ' active' : '') + '" data-ctx-mode="tree" title="Tree View" style="margin-left:4px"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M1.5 1h3v3h-3V1zm0 5h3v3h-3V6zm0 5h3v3h-3v-3zM6 2h9v1H6V2zm0 5h9v1H6V7zm0 5h9v1H6v-1z" fill="currentColor"/></svg></button>' +
+        '<button class="ctx-toolbar-btn' + (ctxViewMode === 'flat' ? ' active' : '') + '" data-ctx-mode="flat" title="Flat View"><svg width="14" height="14" viewBox="0 0 16 16"><path d="M2 3h12v1H2V3zm0 4h12v1H2V7zm0 4h12v1H2v-1z" fill="currentColor"/></svg></button>' +
         '</div></div>' +
         '<div class="ctx-search-bar">' +
         '<input class="ctx-search" id="ctx-search" placeholder="Search..." />' +
