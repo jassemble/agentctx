@@ -465,7 +465,7 @@ function getCSS(): string {
       --color-success: #3fb950;
       --color-warning: #d29922;
       --color-error: #f85149;
-      --color-module: #bc8cff;
+      --color-module: #8b949e;
       --space-1: 4px;
       --space-2: 8px;
       --space-3: 12px;
@@ -605,8 +605,8 @@ function getCSS(): string {
     }
     .btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
     .btn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
-    .btn-primary { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-    .btn-primary:hover { opacity: 0.85; color: #fff; }
+    .btn-primary { background: var(--color-primary); color: #f0f3f6; border-color: var(--color-primary); }
+    .btn-primary:hover { opacity: 0.85; color: #f0f3f6; }
     .btn-success { background: var(--color-success); color: #0d1117; border-color: var(--color-success); }
     .btn-success:hover { opacity: 0.85; color: #0d1117; }
     .btn-lg { padding: var(--space-2) var(--space-5); font-size: 13px; }
@@ -761,7 +761,7 @@ function getCSS(): string {
     .event-icon.commit { background: #58a6ff22; color: var(--color-primary); }
     .event-icon.spec { background: #3fb95022; color: var(--color-success); }
     .event-icon.checkpoint { background: #d2992222; color: var(--color-warning); }
-    .event-icon.module { background: #bc8cff22; color: var(--color-module); }
+    .event-icon.module { background: #8b949e22; color: var(--color-module); }
     .event-message { font-size: 13px; line-height: 1.5; }
     .event-time {
       font-size: 11px; color: var(--color-text-secondary);
