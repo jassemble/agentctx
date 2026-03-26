@@ -691,22 +691,34 @@ function getCSS(): string {
 
     /* Context tab */
     .context-grid { display: grid; grid-template-columns: 280px 1fr; gap: 0; height: calc(100vh - 120px); }
-    .context-tree { border-right: 1px solid var(--color-border); padding: var(--space-3); overflow-y: auto; }
+    .context-tree { border-right: 1px solid var(--color-border); padding: var(--space-2); overflow-y: auto; }
     .context-viewer { padding: var(--space-6); overflow-y: auto; }
+    .ctx-toolbar { display: flex; gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); margin-bottom: var(--space-2); }
+    .ctx-toolbar-btn { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 3px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; }
+    .ctx-toolbar-btn.active { background: var(--color-primary-muted); color: var(--color-primary); border-color: var(--color-primary); }
+    .ctx-search { width: 100%; padding: 4px 8px; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 4px; color: var(--color-text-primary); font-size: 12px; outline: none; margin-bottom: var(--space-2); }
+    .ctx-search:focus { border-color: var(--color-primary); }
+    .ctx-folder { }
+    .ctx-folder-head { display: flex; align-items: center; gap: 4px; padding: 3px 6px; cursor: pointer; border-radius: 5px; font-size: 12px; color: var(--color-text-secondary); font-weight: 500; user-select: none; }
+    .ctx-folder-head:hover { background: var(--color-surface); color: var(--color-text-primary); }
+    .ctx-folder-chevron { transition: transform 0.15s ease; flex-shrink: 0; }
+    .ctx-folder:not(.collapsed) > .ctx-folder-head .ctx-folder-chevron { transform: rotate(90deg); }
+    .ctx-folder.collapsed > .ctx-folder-children { display: none; }
     .ctx-file {
-      display: flex; align-items: center; gap: var(--space-2);
-      padding: var(--space-2) 10px;
-      border-radius: 5px; cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 6px; border-radius: 5px; cursor: pointer;
       font-size: 13px; transition: background 0.1s ease-out;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .ctx-file:hover { background: var(--color-surface); }
     .ctx-file.active { background: var(--color-primary-muted); color: var(--color-primary); }
     .ctx-file .tokens {
-      font-size: 11px; color: var(--color-text-secondary);
-      margin-left: auto; font-family: var(--font-mono);
+      font-size: 10px; color: var(--color-text-secondary);
+      margin-left: auto; font-family: var(--font-mono); flex-shrink: 0;
     }
     .ctx-file svg { flex-shrink: 0; color: var(--color-text-secondary); }
     .ctx-file.active svg { color: var(--color-primary); }
+    .ctx-viewer-header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--color-text-secondary); font-family: var(--font-mono); margin-bottom: var(--space-4); padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-border); }
 
     /* Activity tab */
     .timeline { max-width: 700px; }
@@ -1105,11 +1117,49 @@ function getJS(): string {
         return;
       }
 
+      // Context folder toggle
+      var ctxToggle = target.closest('[data-ctx-toggle]');
+      if (ctxToggle) {
+        ctxToggle.parentElement.classList.toggle('collapsed');
+        return;
+      }
+
+      // Context view mode toggle
+      var ctxMode = target.closest('[data-ctx-mode]');
+      if (ctxMode) {
+        ctxViewMode = ctxMode.dataset.ctxMode;
+        var el = document.getElementById('context-content');
+        renderContextTree(el, ctxFiles);
+        return;
+      }
+
       // Recommendation copy
       var recItem = target.closest('[data-rec]');
       if (recItem) {
         copyRec(recItem, recItem.dataset.rec);
         return;
+      }
+    });
+
+    // Context search filter
+    document.addEventListener('input', function(e) {
+      if (e.target && e.target.id === 'ctx-search') {
+        var q = e.target.value.toLowerCase();
+        var items = document.querySelectorAll('.ctx-file');
+        items.forEach(function(item) {
+          var path = (item.dataset.ctxPath || '').toLowerCase();
+          var name = item.textContent.toLowerCase();
+          item.style.display = (path.includes(q) || name.includes(q)) ? '' : 'none';
+        });
+        // Show/hide folders based on visible children
+        document.querySelectorAll('.ctx-folder').forEach(function(folder) {
+          var hasVisible = false;
+          folder.querySelectorAll('.ctx-file').forEach(function(f) {
+            if (f.style.display !== 'none') hasVisible = true;
+          });
+          folder.style.display = hasVisible ? '' : 'none';
+          if (q && hasVisible) folder.classList.remove('collapsed');
+        });
       }
     });
 
@@ -1392,27 +1442,90 @@ function getJS(): string {
     }
 
     // ── Context ──
+    var ctxViewMode = 'tree';
+    var ctxFiles = [];
+
     async function loadContext() {
       var res = await fetch('/api/context');
-      var files = await res.json();
+      ctxFiles = await res.json();
       var el = document.getElementById('context-content');
 
-      if (files.length === 0) {
+      if (ctxFiles.length === 0) {
         el.innerHTML = '<div class="empty-state"><h3>No context files</h3><p>Initialize agentctx to create context files for AI agents.</p><code>agentctx init</code></div>';
         return;
       }
 
+      renderContextTree(el, ctxFiles);
+    }
+
+    function renderContextTree(el, files) {
+      // Toolbar: toggle tree/flat + search
+      var toolbar = '<div class="ctx-toolbar">' +
+        '<button class="ctx-toolbar-btn' + (ctxViewMode === 'tree' ? ' active' : '') + '" data-ctx-mode="tree">Tree</button>' +
+        '<button class="ctx-toolbar-btn' + (ctxViewMode === 'flat' ? ' active' : '') + '" data-ctx-mode="flat">Flat</button>' +
+        '</div>' +
+        '<input class="ctx-search" id="ctx-search" placeholder="Filter files..." />';
+
       var treeHTML = '';
-      for (var i = 0; i < files.length; i++) {
-        var f = files[i];
-        treeHTML += '<div class="ctx-file" data-ctx-path="' + esc(f.path) + '" tabindex="0">' +
-          '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 1.5A1.5 1.5 0 014.5 0h5.379a1.5 1.5 0 011.06.44l2.122 2.12A1.5 1.5 0 0113.5 3.622V14.5a1.5 1.5 0 01-1.5 1.5h-8A1.5 1.5 0 013 14.5v-13z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>' +
-          '<span>' + esc(f.name) + '</span>' +
-          '<span class="tokens">' + f.tokens + '</span>' +
-          '</div>';
+      if (ctxViewMode === 'tree') {
+        treeHTML = buildCtxTree(files);
+      } else {
+        for (var i = 0; i < files.length; i++) {
+          treeHTML += renderCtxFile(files[i]);
+        }
       }
 
-      el.innerHTML = '<div class="context-grid"><div class="context-tree">' + treeHTML + '</div><div class="context-viewer" id="ctx-viewer"><div class="empty-state"><p>Select a file to view</p></div></div></div>';
+      el.innerHTML = '<div class="context-grid"><div class="context-tree">' + toolbar + '<div id="ctx-file-list">' + treeHTML + '</div></div><div class="context-viewer" id="ctx-viewer"><div class="empty-state"><p>Select a file to view</p></div></div></div>';
+    }
+
+    function buildCtxTree(files) {
+      // Group by directory
+      var tree = {};
+      for (var i = 0; i < files.length; i++) {
+        var parts = files[i].path.split('/');
+        // Remove .agentctx/context/ prefix for display
+        var displayPath = files[i].path.replace(/^\.agentctx\/context\//, '');
+        var dirParts = displayPath.split('/');
+        var fileName = dirParts.pop();
+        var dirKey = dirParts.join('/') || 'root';
+        if (!tree[dirKey]) tree[dirKey] = [];
+        tree[dirKey].push({ name: fileName, path: files[i].path, tokens: files[i].tokens });
+      }
+
+      var html = '';
+      var dirs = Object.keys(tree).sort();
+      for (var d = 0; d < dirs.length; d++) {
+        var dir = dirs[d];
+        var dirFiles = tree[dir];
+        if (dir === 'root') {
+          for (var f = 0; f < dirFiles.length; f++) {
+            html += renderCtxFile(dirFiles[f]);
+          }
+        } else {
+          // Compact display: conventions/nextjs → "conventions / nextjs"
+          var displayDir = dir.replace(/\//g, ' / ');
+          html += '<div class="ctx-folder">' +
+            '<div class="ctx-folder-head" data-ctx-toggle="1">' +
+            '<svg class="ctx-folder-chevron" width="12" height="12" viewBox="0 0 12 12"><path d="M4.5 2L8.5 6L4.5 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+            '<span>' + esc(displayDir) + '</span>' +
+            '<span class="tokens" style="margin-left:auto">' + dirFiles.length + '</span>' +
+            '</div><div class="ctx-folder-children" style="padding-left:16px">';
+          for (var f = 0; f < dirFiles.length; f++) {
+            html += renderCtxFile(dirFiles[f]);
+          }
+          html += '</div></div>';
+        }
+      }
+      return html;
+    }
+
+    function renderCtxFile(f) {
+      var name = f.name || f.path.split('/').pop();
+      return '<div class="ctx-file" data-ctx-path="' + esc(f.path) + '" tabindex="0" title="' + esc(f.path) + '">' +
+        '<svg width="14" height="14" viewBox="0 0 16 16"><path d="M3 1.5A1.5 1.5 0 014.5 0h5.379a1.5 1.5 0 011.06.44l2.122 2.12A1.5 1.5 0 0113.5 3.622V14.5a1.5 1.5 0 01-1.5 1.5h-8A1.5 1.5 0 013 14.5v-13z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 7h5M5.5 9.5h5M5.5 12h3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>' +
+        '<span>' + esc(name.replace('.md', '')) + '</span>' +
+        '<span class="tokens">' + f.tokens + '</span>' +
+        '</div>';
     }
 
     async function viewContextFile(el, path) {
@@ -1421,7 +1534,13 @@ function getJS(): string {
       try {
         var res = await fetch('/api/file?path=' + encodeURIComponent(path));
         var text = await res.text();
-        document.getElementById('ctx-viewer').innerHTML = '<div class="md">' + marked.parse(text) + '</div>';
+        var tokens = text.split(/\s+/).filter(function(w) { return w.length > 0; }).length;
+        tokens = Math.ceil(tokens * 1.33);
+        document.getElementById('ctx-viewer').innerHTML =
+          '<div class="ctx-viewer-header"><span>' + esc(path) + '</span><span>' + tokens + ' tokens</span></div>' +
+          '<div class="md">' + marked.parse(text) + '</div>';
+        // Highlight code blocks
+        document.querySelectorAll('#ctx-viewer pre code').forEach(function(block) { hljs.highlightElement(block); });
       } catch (err) {
         document.getElementById('ctx-viewer').innerHTML = '<div class="empty-state"><p>Could not load file</p></div>';
       }
@@ -1561,7 +1680,9 @@ function getDashboardHTML(projectName: string): string {
 </head>
 <body>
   ${getBodyHTML(projectName)}
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
   <script>${getJS()}</script>
 </body>
 </html>`;
