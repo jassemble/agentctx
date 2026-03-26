@@ -108,3 +108,13 @@ adjacent text. Use `currentColor` for icon fill so they inherit text color.
 - Don't write desktop-first styles — always start mobile-first
 - Don't use `linear` easing or skip `prefers-reduced-motion` support
 - Don't mix icon libraries or use inconsistent icon sizes
+
+## Design Commands
+
+Use these commands for design quality workflows:
+- `/audit` — run a quality audit across accessibility, performance, theming
+- `/normalize` — standardize design tokens and inconsistencies
+- `/polish` — final polish pass before shipping
+- `/critique` — UX critique from user perspective
+- `/harden` — add error handling, loading states, edge cases
+- `/optimize` — performance optimization for UI

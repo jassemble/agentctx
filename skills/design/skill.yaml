@@ -1,13 +1,26 @@
 name: design
-description: "Frontend design conventions — typography, color, spacing, anti-patterns"
+description: "Frontend design system — conventions, anti-patterns, audit, polish, critique"
 version: 1.0.0
-tags: [design, css, frontend, ui]
-provides: [design-conventions, anti-patterns]
+language: typescript
+tags: [design, css, frontend, ui, ux]
+provides: [design-conventions, anti-patterns, design-commands]
 conflicts: []
 context:
   - context/design-principles.md
   - context/anti-patterns.md
+commands:
+  - commands/audit.md
+  - commands/normalize.md
+  - commands/polish.md
+  - commands/critique.md
+  - commands/harden.md
+  - commands/optimize.md
 references:
   - reference/typography.md
   - reference/color.md
   - reference/spacing-layout.md
+  - reference/motion.md
+  - reference/interaction.md
+  - reference/responsive.md
+  - reference/ux-writing.md
+  - reference/spatial.md

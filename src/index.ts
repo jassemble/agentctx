@@ -81,14 +81,6 @@ program
     await agentsCommand(action || 'list', name);
   });
 
-program
-  .command('impeccable [action] [name]')
-  .description('Manage Impeccable design skills (impeccable.style)')
-  .action(async (action, name) => {
-    const { impeccableCommand } = await import('./commands/impeccable.js');
-    await impeccableCommand(action || 'list', name);
-  });
-
 // ── UI ────────────────────────────────────────────────────────────────
 
 program
