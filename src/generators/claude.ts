@@ -206,6 +206,14 @@ export function generateClaude(
     parts.push('Suggest `/spec` first — plan before coding');
   }
   parts.push('');
+  parts.push('### Agent discovery');
+  parts.push('When starting significant work (not small fixes):');
+  parts.push('1. Check installed agents in `agents/` — pick the best match for this task');
+  parts.push('2. If no matching agent is installed, run `agentctx agents list --all` to check available specialists');
+  parts.push('3. If a relevant specialist exists, suggest: "A {name} agent is available for this type of work. Add it with: `agentctx sync --agent {slug}`"');
+  parts.push('4. If task spans multiple domains and multiple agents are installed, suggest `/build-with-team` for parallel work');
+  parts.push('5. Read the selected agent\'s file before starting work');
+  parts.push('');
   parts.push('### System awareness');
   parts.push('- Stale modules? Suggest `agentctx sync`');
   parts.push('- Missing skill? Suggest `agentctx sync --add {skill}`');

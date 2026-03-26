@@ -17,7 +17,14 @@ Implement a feature from an approved spec.
    - Read `.agentctx/context/decisions.md` for prior decisions
    - This step is NOT optional — skipping it leads to duplicate code and convention violations
 
-3. Check if this spec affects multiple areas (backend + frontend, API + mobile, etc.):
+3. **Agent check** — does a specialist exist for this work?
+   - Check `.agentctx/context/agents/` for installed agents relevant to this spec's domain
+   - If no matching agent is installed, run `agentctx agents list --all` to check available specialists
+   - If a relevant specialist exists, suggest adding it: `agentctx sync --agent {slug}`
+   - Read the matching agent's file to adopt their expertise before implementing
+   - For multi-domain specs: suggest `/build-with-team` with agents assigned per domain
+
+4. Check if this spec affects multiple areas (backend + frontend, API + mobile, etc.):
    - Look at the "Affected Files" section and child specs
    - If it spans multiple areas, ask the user:
      "This spec affects multiple areas. How would you like to proceed?
@@ -26,32 +33,32 @@ Implement a feature from an approved spec.
       3. Use `/build-with-team` for parallel implementation with agent teams"
    - If the user chooses 2 or 3, hand off to that command and stop
 
-4. Read the project context:
+5. Read the project context:
    - Read `CLAUDE.md` for conventions and patterns
    - Read relevant module files in `.agentctx/context/modules/` for existing code
    - Read `.agentctx/context/architecture.md` for structure conventions
    - If the spec has a `parent_spec` field, read the parent spec for full context
 
-5. Create a feature branch (if not already on one):
+6. Create a feature branch (if not already on one):
    ```bash
    git checkout -b feat/{NNNN}-{name}
    ```
 
-6. Transition spec status to `in-progress`:
+7. Transition spec status to `in-progress`:
    - Rename the spec file from `approved-{NNNN}-{name}.md` to `in-progress-{NNNN}-{name}.md`
      - Use `git mv` if the file is tracked, otherwise regular mv
    - Update the `status` field in the spec frontmatter to `in-progress`
    - Update `specs/INDEX.md` status column to `in-progress`
 
-7. Convert acceptance criteria into a task list and plan the implementation order
+8. Convert acceptance criteria into a task list and plan the implementation order
 
-8. Implement each task:
+9. Implement each task:
    - Follow conventions from CLAUDE.md
    - Reuse existing functions from modules/ documentation
    - Put new files in the correct location per architecture.md
    - After each significant subtask, consider a mini-checkpoint
 
-9. After implementation, update module files:
+10. After implementation, update module files:
    - Create or update `.agentctx/context/modules/{feature}.md` with:
      - Key files created/modified
      - Exported functions/components
@@ -60,20 +67,20 @@ Implement a feature from an approved spec.
    - Update `.agentctx/context/status.md` with the completed work
    - Log any architectural decisions in `.agentctx/context/decisions.md`
 
-10. Transition spec status to `completed`:
+11. Transition spec status to `completed`:
     - Rename the spec file from `in-progress-{NNNN}-{name}.md` to `completed-{NNNN}-{name}.md`
       - Use `git mv` if the file is tracked, otherwise regular mv
     - Update the `status` field in the spec frontmatter to `completed`
     - Update `specs/INDEX.md` status column to `completed`
 
-11. Auto-checkpoint:
+12. Auto-checkpoint:
     ```bash
     git add -A
     git commit -m "checkpoint: spec-{NNNN} implementation complete"
     git tag cp-{NNNN}-done
     ```
 
-12. Print a summary:
+13. Print a summary:
     ```
     Implementation complete: {title}
     Spec: specs/completed-{NNNN}-{name}.md
