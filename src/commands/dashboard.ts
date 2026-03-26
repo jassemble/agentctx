@@ -696,8 +696,13 @@ function getCSS(): string {
     .ctx-toolbar { display: flex; gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); margin-bottom: var(--space-2); }
     .ctx-toolbar-btn { background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-secondary); padding: 3px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; }
     .ctx-toolbar-btn.active { background: var(--color-primary-muted); color: var(--color-primary); border-color: var(--color-primary); }
-    .ctx-search { width: 100%; padding: 4px 8px; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 4px; color: var(--color-text-primary); font-size: 12px; outline: none; margin-bottom: var(--space-2); }
-    .ctx-search:focus { border-color: var(--color-primary); }
+    .ctx-search-bar { display: flex; align-items: center; gap: 0; margin-bottom: var(--space-2); background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 4px; overflow: hidden; }
+    .ctx-search-bar:focus-within { border-color: var(--color-primary); }
+    .ctx-search { flex: 1; padding: 5px 8px; background: transparent; border: none; color: var(--color-text-primary); font-size: 12px; outline: none; }
+    .ctx-search-opts { display: flex; gap: 1px; padding: 2px 4px; }
+    .ctx-search-opt { width: 24px; height: 20px; display: flex; align-items: center; justify-content: center; background: transparent; border: 1px solid transparent; border-radius: 3px; color: var(--color-text-secondary); cursor: pointer; font-size: 11px; font-family: var(--font-mono); font-weight: 600; }
+    .ctx-search-opt:hover { background: var(--color-surface); }
+    .ctx-search-opt.active { background: var(--color-primary-muted); color: var(--color-primary); border-color: var(--color-primary); }
     .ctx-folder { }
     .ctx-folder-head { display: flex; align-items: center; gap: 4px; padding: 3px 6px; cursor: pointer; border-radius: 5px; font-size: 12px; color: var(--color-text-secondary); font-weight: 500; user-select: none; }
     .ctx-folder-head:hover { background: var(--color-surface); color: var(--color-text-primary); }
@@ -719,14 +724,23 @@ function getCSS(): string {
     .ctx-file svg { flex-shrink: 0; color: var(--color-text-secondary); }
     .ctx-file.active svg { color: var(--color-primary); }
     .ctx-viewer-header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--color-text-secondary); font-family: var(--font-mono); margin-bottom: var(--space-4); padding-bottom: var(--space-3); border-bottom: 1px solid var(--color-border); }
-    .search-results { padding: var(--space-2); }
-    .search-result { padding: var(--space-2); border-radius: 5px; cursor: pointer; margin-bottom: 2px; }
-    .search-result:hover { background: var(--color-surface); }
-    .search-result-file { font-size: 12px; font-weight: 500; color: var(--color-primary); margin-bottom: 2px; }
-    .search-result-line { font-size: 11px; color: var(--color-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 12px; }
-    .search-result-line .line-num { color: var(--color-text-secondary); font-family: var(--font-mono); margin-right: 6px; font-size: 10px; }
-    .search-highlight { background: rgba(210, 153, 34, 0.25); color: #d29922; border-radius: 2px; padding: 0 1px; }
-    .search-count { font-size: 11px; color: var(--color-text-secondary); padding: var(--space-2); }
+    .search-results { padding: 0; }
+    .search-count { font-size: 12px; color: var(--color-text-secondary); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); }
+    .search-file-group { }
+    .search-file-head { display: flex; align-items: center; gap: 6px; padding: 3px var(--space-2); cursor: pointer; font-size: 12px; user-select: none; }
+    .search-file-head:hover { background: var(--color-surface); }
+    .search-file-chevron { transition: transform 0.15s; flex-shrink: 0; color: var(--color-text-secondary); }
+    .search-file-group:not(.collapsed) > .search-file-head .search-file-chevron { transform: rotate(90deg); }
+    .search-file-group.collapsed > .search-file-lines { display: none; }
+    .search-file-name { color: var(--color-primary); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .search-file-dir { color: var(--color-text-secondary); font-size: 11px; margin-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .search-file-badge { margin-left: auto; background: var(--color-surface); color: var(--color-text-secondary); font-size: 10px; padding: 1px 6px; border-radius: 8px; flex-shrink: 0; }
+    .search-file-lines { }
+    .search-line { display: flex; align-items: baseline; gap: 0; padding: 1px var(--space-2) 1px 28px; font-size: 12px; cursor: pointer; }
+    .search-line:hover { background: var(--color-surface); }
+    .search-line-num { color: var(--color-text-secondary); font-family: var(--font-mono); font-size: 11px; min-width: 28px; text-align: right; margin-right: 8px; flex-shrink: 0; }
+    .search-line-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--color-text-primary); }
+    .search-highlight { background: rgba(210, 153, 34, 0.3); color: #e8b931; border-radius: 2px; padding: 0 1px; }
 
     /* Activity tab */
     .timeline { max-width: 700px; }
@@ -1132,6 +1146,25 @@ function getJS(): string {
         return;
       }
 
+      // Search file group toggle
+      var searchToggle = target.closest('[data-search-toggle]');
+      if (searchToggle) {
+        searchToggle.parentElement.classList.toggle('collapsed');
+        return;
+      }
+
+      // Search option toggle (Aa, ab, .*)
+      var searchOpt = target.closest('[data-search-opt]');
+      if (searchOpt) {
+        searchOpt.classList.toggle('active');
+        // Re-trigger search
+        var searchInput = document.getElementById('ctx-search');
+        if (searchInput && searchInput.value.length >= 2) {
+          searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        return;
+      }
+
       // Context view mode toggle
       var ctxMode = target.closest('[data-ctx-mode]');
       if (ctxMode) {
@@ -1194,14 +1227,25 @@ function getJS(): string {
 
               var html = '<div id="ctx-search-results" class="search-results">';
               if (results.length === 0) {
-                html += '<div class="search-count">No results</div>';
+                html += '<div class="search-count">No results found</div>';
               } else {
                 var totalMatches = 0;
                 results.forEach(function(r) { totalMatches += r.matches.length; });
                 html += '<div class="search-count">' + totalMatches + ' results in ' + results.length + ' files</div>';
+
                 results.forEach(function(r) {
-                  html += '<div class="search-result" data-ctx-path="' + esc(r.path) + '">';
-                  html += '<div class="search-result-file">' + esc(r.path.replace('.agentctx/context/', '')) + '</div>';
+                  var fileName = r.path.split('/').pop();
+                  var dirPath = r.path.replace('.agentctx/', '').replace('/' + fileName, '');
+
+                  html += '<div class="search-file-group">';
+                  html += '<div class="search-file-head" data-search-toggle="1">';
+                  html += '<svg class="search-file-chevron" width="12" height="12" viewBox="0 0 12 12"><path d="M4.5 2L8.5 6L4.5 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                  html += '<span class="search-file-name">' + esc(fileName) + '</span>';
+                  html += '<span class="search-file-dir">' + esc(dirPath) + '</span>';
+                  html += '<span class="search-file-badge">' + r.matches.length + '</span>';
+                  html += '</div>';
+                  html += '<div class="search-file-lines">';
+
                   r.matches.forEach(function(m) {
                     var escaped = esc(m.text);
                     var idx = escaped.toLowerCase().indexOf(q.toLowerCase());
@@ -1211,9 +1255,13 @@ function getJS(): string {
                         '<span class="search-highlight">' + escaped.substring(idx, idx + q.length) + '</span>' +
                         escaped.substring(idx + q.length);
                     }
-                    html += '<div class="search-result-line"><span class="line-num">L' + m.line + '</span>' + highlighted + '</div>';
+                    html += '<div class="search-line" data-ctx-path="' + esc(r.path) + '">';
+                    html += '<span class="search-line-num">' + m.line + '</span>';
+                    html += '<span class="search-line-text">' + highlighted + '</span>';
+                    html += '</div>';
                   });
-                  html += '</div>';
+
+                  html += '</div></div>';
                 });
               }
               html += '</div>';
@@ -1530,7 +1578,13 @@ function getJS(): string {
         '<button class="ctx-toolbar-btn' + (ctxViewMode === 'tree' ? ' active' : '') + '" data-ctx-mode="tree">Tree</button>' +
         '<button class="ctx-toolbar-btn' + (ctxViewMode === 'flat' ? ' active' : '') + '" data-ctx-mode="flat">Flat</button>' +
         '</div>' +
-        '<input class="ctx-search" id="ctx-search" placeholder="Filter files..." />';
+        '<div class="ctx-search-bar">' +
+        '<input class="ctx-search" id="ctx-search" placeholder="Search files and content..." />' +
+        '<div class="ctx-search-opts">' +
+        '<button class="ctx-search-opt" data-search-opt="case" title="Match Case">Aa</button>' +
+        '<button class="ctx-search-opt" data-search-opt="word" title="Match Whole Word">ab</button>' +
+        '<button class="ctx-search-opt" data-search-opt="regex" title="Use Regular Expression">.*</button>' +
+        '</div></div>';
 
       var treeHTML = '';
       if (ctxViewMode === 'tree') {
