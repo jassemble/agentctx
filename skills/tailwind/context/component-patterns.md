@@ -1,6 +1,17 @@
 # Tailwind CSS — Component Patterns
 
-## Avoid `@apply` — Use Component Composition
+## Quick Rules
+- Create React components for reuse instead of extracting classes with `@apply`
+- Use `class-variance-authority` (CVA) for type-safe component variants
+- Stick to Tailwind's default spacing scale — don't mix values within the same visual group
+- Extend the theme in `tailwind.config.ts` for project-specific tokens instead of arbitrary values
+- Only use `@apply` for styling elements you don't control (Markdown HTML, third-party widgets)
+- Use `prose` from `@tailwindcss/typography` for user-generated/Markdown content
+- Bridge design tokens to Tailwind via CSS variables: `surface: 'hsl(var(--surface))'`
+
+## Patterns
+
+### Avoid `@apply` — Use Component Composition
 
 `@apply` extracts utilities into CSS classes. This **defeats the purpose** of utility-first CSS and creates maintenance overhead. Only use it for:
 
@@ -29,7 +40,7 @@ function Button({ variant = "primary", ...props }: ButtonProps) {
 }
 ```
 
-## Variant Patterns with CVA
+### Variant Patterns with CVA
 
 Use `class-variance-authority` to define component variants with type-safe props:
 
@@ -72,7 +83,7 @@ export function Button({ variant, size, className, ...props }: ButtonProps) {
 
 This pattern gives you: type-safe variant props, easy composition, and a single source of truth for each component's visual states.
 
-## Consistent Spacing Scale
+### Consistent Spacing Scale
 
 Stick to the default spacing scale for consistency. The most commonly used values:
 
@@ -87,7 +98,7 @@ Stick to the default spacing scale for consistency. The most commonly used value
 
 **Rule**: don't mix values from different parts of the scale in the same visual group. If cards use `p-4`, all cards should use `p-4`.
 
-## Design Tokens via tailwind.config
+### Design Tokens via tailwind.config
 
 Extend the theme for project-specific values rather than using arbitrary values throughout:
 
@@ -119,7 +130,7 @@ export default {
 
 Reference tokens in classes: `bg-brand-600`, `text-surface`, `rounded`.
 
-## Prose Styling with Typography Plugin
+### Prose Styling with Typography Plugin
 
 For rendering user-generated content or Markdown, use `@tailwindcss/typography`:
 

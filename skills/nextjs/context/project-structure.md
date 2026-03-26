@@ -1,6 +1,18 @@
 # Next.js App Router — Project Structure
 
-## Canonical Directory Layout
+## Quick Rules
+- Routes live in `src/app/` — shared components in `src/components/`, utilities in `src/lib/`
+- Colocate route-specific components in `_components/` inside the route folder (prefixed `_` = private)
+- Push `'use client'` boundaries as deep as possible — client components should be leaf nodes
+- Use `server-only` package for code that must never run on the client (DB queries, secrets)
+- API route handlers go in `app/api/` as `route.ts` — prefer Server Actions for form submissions
+- `NEXT_PUBLIC_*` env vars are bundled into client JS; all others are server-only
+- Middleware goes in `middleware.ts` at project root (next to `src/`, not inside it)
+- Use `@/` path alias for all absolute imports — never use deep relative paths (`../../../`)
+
+## Patterns
+
+### Canonical Directory Layout
 
 ```
 ├── src/
@@ -33,15 +45,15 @@
 └── .env.local                  # Local environment variables (gitignored)
 ```
 
-## Key Placement Rules
-
 ### Components
+
 - **`src/components/`** — shared components used by multiple routes.
 - **Colocate** route-specific components inside the route folder (e.g., `app/dashboard/_components/chart.tsx`). Prefix with `_` to mark as private — `_components` won't become routes.
 - Components that use `'use client'` should be leaf nodes — push client boundaries as deep as possible.
 
 ### Server-Only Code
-- Utility functions that must **never** run on the client (DB queries, secret access): use the `server-only` package.
+
+Utility functions that must **never** run on the client (DB queries, secret access): use the `server-only` package.
 
 ```typescript
 // src/lib/db.ts
@@ -54,6 +66,7 @@ if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db;
 ```
 
 ### API Route Handlers
+
 - Place in `app/api/` using `route.ts` files.
 - Export named functions matching HTTP methods: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`.
 - Use route handlers for **webhooks**, **third-party callbacks**, and **client-side mutations that can't use Server Actions**.
@@ -70,7 +83,7 @@ export async function POST(request: NextRequest) {
 }
 ```
 
-## Environment Variables
+### Environment Variables
 
 | Pattern | Behavior |
 |---------|----------|
@@ -80,7 +93,7 @@ export async function POST(request: NextRequest) {
 - Use `.env.local` for local development (gitignored by default).
 - Access with `process.env.VARIABLE_NAME` — they are NOT available in `'use client'` files unless prefixed with `NEXT_PUBLIC_`.
 
-## next.config.js Key Settings
+### next.config.js Key Settings
 
 ```javascript
 /** @type {import('next').NextConfig} */

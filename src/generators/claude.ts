@@ -117,39 +117,61 @@ export function generateClaude(
     parts.push(meta.join(' | '));
   }
 
-  // ── Context Directory (routing table) ────────────────────────────────
+  // ── Context Routing ─────────────────────────────────────────────────
 
   parts.push('');
-  parts.push('## Context Directory');
+  parts.push('## Context Routing');
   parts.push('');
-  parts.push('Read files from `.agentctx/context/` based on what you need:');
+  parts.push('All context lives in `.agentctx/context/`. Read ONLY what\'s relevant to your current task:');
   parts.push('');
-  parts.push('| Need | Path | When |');
-  parts.push('|------|------|------|');
 
+  // Task-based routing
+  parts.push('### By task type');
+  parts.push('| Working on | Read first | Also read |');
+  parts.push('|---|---|---|');
+
+  const lang = config.project.language || '';
+  const framework = config.project.framework || '';
+
+  if (framework === 'nextjs') {
+    parts.push('| React components, pages | `conventions/routing.md` (Quick Rules) | `conventions/tailwind.md` if styling |');
+    parts.push('| Data fetching, APIs | `conventions/data-fetching.md` (Quick Rules) | `conventions/typescript.md` |');
+  }
   if (hasConventions) {
-    parts.push('| Code conventions | `conventions/*.md` | Before writing code in that stack |');
+    parts.push('| Styling, CSS, layout | `conventions/tailwind.md` or `conventions/design-principles.md` | `references/color.md`, `references/spacing-layout.md` |');
+  }
+  if (lang === 'typescript' || lang === 'javascript') {
+    parts.push('| TypeScript/JS logic | `conventions/typescript.md` (Quick Rules) | relevant `modules/*.md` |');
+  }
+  if (lang === 'python') {
+    parts.push('| Python code | `conventions/endpoints.md` or `conventions/models.md` | relevant `modules/*.md` |');
+  }
+  parts.push('| New feature area | `modules/*.md` (check what exists) | `architecture.md`, `decisions.md` |');
+  parts.push('| Starting a session | `status.md` (what happened last) | Module Index below |');
+  parts.push('');
+
+  // File-level routing
+  parts.push('### By directory');
+  parts.push('| File location | Context |');
+  parts.push('|---|---|');
+  if (hasConventions) {
+    parts.push('| `conventions/*.md` | Read Quick Rules section always, full Patterns section when implementing |');
   }
   if (hasModules) {
-    parts.push('| What code exists | `modules/*.md` | Before creating new code — check what\'s reusable |');
+    parts.push('| `modules/*.md` | Read the specific module for the area you\'re working in |');
   }
   if (hasAgents) {
-    parts.push('| Agent personality | `agents/*.md` | Read at start of conversation |');
-  }
-  if (hasArchitecture) {
-    parts.push('| Architecture | `architecture.md` | When deciding where to put new files |');
-  }
-  if (hasDecisions) {
-    parts.push('| Past decisions | `decisions.md` | When choosing between approaches |');
-  }
-  if (hasStatus) {
-    parts.push('| Current status | `status.md` | When planning what to work on |');
-  }
-  if (hasWorkflow) {
-    parts.push('| Dev workflow | `workflow.md` | When starting a new feature |');
+    parts.push('| `agents/*.md` | Read matching specialist for the task |');
   }
   if (hasReferences) {
-    parts.push('| Quick references | `references/*.md` | When looking up syntax or patterns |');
+    parts.push('| `references/*.md` | Look up syntax or patterns when needed |');
+  }
+  parts.push('');
+
+  // Convention files structure hint
+  if (hasConventions) {
+    parts.push('> Convention files have 3 layers: **Quick Rules** (always read, ~10 lines) → **Patterns** (read when implementing) → **Don\'t** (read before submitting)');
+    parts.push('');
   }
 
   // ── Module Index ─────────────────────────────────────────────────────
@@ -184,19 +206,32 @@ export function generateClaude(
   parts.push('');
   parts.push('## Protocol');
   parts.push('');
+  parts.push('### At conversation start');
+  parts.push('1. Read `status.md` — understand what happened in the last session');
+  parts.push('2. Read Module Index below — know what code exists');
+  parts.push('3. Read matching agent file from `agents/` if one is installed');
+  parts.push('');
   parts.push('### Before writing code');
   parts.push('1. Check Module Index — reuse existing exports, don\'t duplicate');
-  parts.push('2. Read the relevant convention files in `conventions/`');
-  parts.push('3. Read `architecture.md` for directory conventions');
+  parts.push('2. Read the relevant convention file `Quick Rules` section (see Context Routing above)');
+  parts.push('3. Read `architecture.md` for where to put new files');
+  parts.push('4. Read the full `Patterns` section of relevant conventions only when implementing in that area');
   parts.push('');
   parts.push('### After implementing');
   parts.push('1. Create/update module file in `modules/{feature}.md` with: Key Files, Exports, Dependencies');
   parts.push('2. Log decisions in `decisions.md` (what, why, alternatives, consequences)');
-  parts.push('3. Update `status.md`');
+  parts.push('3. Update `status.md` with what was done, what\'s unfinished, and any issues found');
+  parts.push('');
+  parts.push('### At end of session');
+  parts.push('Update `status.md` with:');
+  parts.push('- What was accomplished in this session');
+  parts.push('- What\'s unfinished or blocked');
+  parts.push('- Any user preferences observed (coding style, PR size, etc.)');
+  parts.push('- Known issues discovered');
   parts.push('');
   parts.push('### When asked to build a new feature');
-  const hasWorkflow = config.skills?.includes('workflow');
-  if (hasWorkflow) {
+  const hasWorkflowSkill = config.skills?.includes('workflow');
+  if (hasWorkflowSkill) {
     parts.push('**MANDATORY**: Do NOT start implementing without an approved spec.');
     parts.push('1. Run `/spec` to create a feature specification first');
     parts.push('2. The spec must be approved via `/approve` before any code is written');

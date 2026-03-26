@@ -1,16 +1,18 @@
 # Next.js App Router — Data Fetching
 
-## Server Components Are the Default
+## Quick Rules
+- Server Components are the default — no `'use client'` unless the component needs hooks, events, or browser APIs
+- Fetch data by `await`-ing directly in Server Components — no useEffect, no loading state management
+- Use Server Actions (`'use server'`) for mutations — they work with progressive enhancement
+- Always validate inputs server-side in Server Actions — they are HTTP endpoints under the hood
+- Use `revalidatePath` or `revalidateTag` after mutations to purge stale cache
+- Wrap slow async components in `<Suspense>` to stream the rest of the page immediately
+- Use `generateStaticParams()` to pre-render known dynamic routes at build time
+- Prefer direct DB/service calls over `fetch()` when the data source is available server-side
 
-Every component inside `app/` is a **Server Component** unless you add `'use client'` at the top. Server Components can:
+## Patterns
 
-- `await` directly in the component body
-- Access databases, file systems, and secrets without exposing them to the client
-- Reduce client bundle size by keeping heavy dependencies server-side
-
-**Rule: don't add `'use client'` unless the component needs interactivity** (useState, useEffect, event handlers, browser APIs).
-
-## Fetching Data in Server Components
+### Fetching Data in Server Components
 
 ```typescript
 // app/posts/page.tsx — this runs only on the server
@@ -22,7 +24,7 @@ export default async function PostsPage() {
 
 You can call any async function — database queries, `fetch()`, file reads. No `useEffect`, no loading state management.
 
-### When to use `fetch()` vs direct DB/service calls
+#### When to use `fetch()` vs direct DB/service calls
 
 - **Direct calls** (Prisma, Drizzle, SDK methods): preferred when the data source is available server-side. Simpler, no serialization overhead.
 - **`fetch()` calls**: use when calling external APIs or when you need Next.js fetch caching/revalidation semantics.
@@ -39,7 +41,7 @@ const data = await fetch('https://api.example.com/posts', {
 });
 ```
 
-## Server Actions
+### Server Actions
 
 Add `'use server'` at the top of a file (or inline in a function) to create a **Server Action** — a function that runs on the server but can be called from client components.
 
@@ -74,7 +76,7 @@ export default function NewPost() {
 - Use `useActionState` (React 19) to track pending/error states in client components.
 - Always validate inputs server-side — the action is an HTTP endpoint under the hood.
 
-## Cache Revalidation
+### Cache Revalidation
 
 | Method | Use case |
 |--------|----------|
@@ -85,7 +87,7 @@ export default function NewPost() {
 
 For mutations (create/update/delete), call `revalidatePath` or `revalidateTag` in the Server Action after the write.
 
-## Streaming with Suspense
+### Streaming with Suspense
 
 Wrap slow components in `<Suspense>` to stream the rest of the page immediately:
 
@@ -107,7 +109,7 @@ export default function Dashboard() {
 - `loading.tsx` is syntactic sugar for wrapping `page.tsx` in a Suspense boundary.
 - Place Suspense boundaries around the **slowest** parts — don't wrap everything.
 
-## Static Generation
+### Static Generation
 
 ```typescript
 // app/posts/[slug]/page.tsx

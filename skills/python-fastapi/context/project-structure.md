@@ -1,6 +1,17 @@
 # FastAPI — Project Structure
 
-## Canonical Directory Layout
+## Quick Rules
+- Use the `app/` directory with `main.py`, `config.py`, `dependencies.py`, and subdirectories for `routers/`, `models/`, `schemas/`, `services/`
+- Use `pydantic-settings` for environment config — never read `os.environ` directly in application code
+- DB sessions use `Depends(get_db)` with auto-commit on success and rollback on exception
+- Keep business logic in `services/` — route handlers only parse input, call a service, and return the response
+- Use Alembic for database migrations — never modify schema manually in production
+- Test at the HTTP layer with `httpx.AsyncClient` and `ASGITransport` — override dependencies with `app.dependency_overrides`
+- Never modify a migration that has been applied to a shared database — create a new migration instead
+
+## Patterns
+
+### Canonical Directory Layout
 
 ```
 ├── app/
@@ -37,7 +48,7 @@
 └── .env
 ```
 
-## Environment Config with pydantic-settings
+### Environment Config with pydantic-settings
 
 ```python
 # app/config.py
@@ -60,7 +71,7 @@ settings = Settings()
 
 Access settings via `from app.config import settings` — never read `os.environ` directly in application code.
 
-## Database Session Dependency
+### Database Session Dependency
 
 ```python
 # app/dependencies.py
@@ -82,7 +93,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 The session auto-commits on success and rolls back on exception. Every endpoint gets an isolated session via `Depends(get_db)`.
 
-## Alembic Migrations
+### Alembic Migrations
 
 ```bash
 # Initialize (one-time)
@@ -108,7 +119,7 @@ target_metadata = Base.metadata
 
 **Rule**: never modify a migration that has been applied to a shared database. Create a new migration instead.
 
-## Testing
+### Testing
 
 ```python
 # tests/conftest.py
@@ -146,7 +157,7 @@ async def test_create_user(client: AsyncClient):
 - Use `pytest-anyio` or `pytest-asyncio` for async test support.
 - Test at the HTTP layer — call endpoints, not service functions directly. This tests routing, validation, serialization, and auth in one pass.
 
-## Service Layer
+### Service Layer
 
 Keep business logic out of route handlers. Route handlers should only:
 1. Parse and validate input (FastAPI does this)

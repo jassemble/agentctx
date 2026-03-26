@@ -205,6 +205,10 @@ Record every non-trivial architectural decision here. Newest first.
       path: 'status.md',
       content: `# Status
 
+## Last Session
+<!-- Updated by AI at end of each session -->
+<!-- What was accomplished, what's unfinished, user preferences -->
+
 ## In Progress
 <!-- Currently being worked on -->
 

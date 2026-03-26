@@ -1,6 +1,17 @@
 # FastAPI — Models
 
-## Pydantic v2 Base Models
+## Quick Rules
+- Separate Pydantic schemas from DB models — never use ORM models as request/response schemas
+- Use the Base/Create/Read/Update pattern: `UserBase`, `UserCreate`, `UserRead`, `UserUpdate`
+- Set `model_config = {"from_attributes": True}` on read schemas for ORM compatibility
+- Set `model_config = {"extra": "forbid"}` on input schemas to reject unexpected fields
+- Use `@field_validator` with `@classmethod` for single-field validation, `@model_validator(mode="after")` for cross-field
+- Use SQLAlchemy 2.0 style with `Mapped[]` and `mapped_column()` — not legacy `Column()` syntax
+- Use `model_dump(exclude_unset=True)` for partial updates — only includes fields the client explicitly sent
+
+## Patterns
+
+### Pydantic v2 Base Models
 
 All request/response schemas should extend `BaseModel` from Pydantic v2:
 
@@ -22,7 +33,7 @@ class UserRead(UserBase):
     model_config = {"from_attributes": True}  # enables ORM mode
 ```
 
-## Separate Schema Models from DB Models
+### Separate Schema Models from DB Models
 
 Never use your ORM model as a request/response schema. Maintain separate models:
 
@@ -43,7 +54,7 @@ class UserUpdate(BaseModel):
 
 Use `model_config = {"extra": "forbid"}` on input schemas to reject unexpected fields — catches client bugs early.
 
-## Field Validators
+### Field Validators
 
 ```python
 from pydantic import field_validator, model_validator
@@ -72,7 +83,7 @@ class UserCreate(BaseModel):
 - `@model_validator(mode="after")` — validates across multiple fields after all field validation.
 - Always use `@classmethod` with `@field_validator`.
 
-## Model Config
+### Model Config
 
 ```python
 class UserRead(BaseModel):
@@ -86,7 +97,7 @@ class UserRead(BaseModel):
     }
 ```
 
-## SQLAlchemy Integration
+### SQLAlchemy Integration
 
 ```python
 # app/models/user.py
@@ -109,7 +120,7 @@ class User(Base):
 
 Use SQLAlchemy 2.0 style with `Mapped[]` and `mapped_column()` — not the legacy `Column()` syntax.
 
-## SQLModel Alternative
+### SQLModel Alternative
 
 SQLModel merges Pydantic + SQLAlchemy into one class. Useful for simpler projects:
 
@@ -130,7 +141,7 @@ class UserRead(UserBase):
 
 Trade-off: SQLModel is simpler but gives less control over DB schema details. For complex schemas with relationships, prefer separate SQLAlchemy models + Pydantic schemas.
 
-## Serialization
+### Serialization
 
 ```python
 user = UserRead(id=1, name="Alice", email="alice@example.com", created_at=now)

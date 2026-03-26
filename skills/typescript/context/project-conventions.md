@@ -1,6 +1,18 @@
 # TypeScript — Project Conventions
 
-## Strict TSConfig
+## Quick Rules
+- Always enable `strict: true` and `noUncheckedIndexedAccess: true` in tsconfig
+- Use kebab-case for files/directories, PascalCase for React component files, `.test.ts` co-located for tests
+- Import order: Node builtins > external packages > `@/` absolute imports > relative imports (separated by blank lines)
+- Use `import type` and `export type` for types with no runtime representation
+- Use `@/` path alias for absolute imports — never go up more than one level with relative paths
+- Prefer string union types over enums — zero runtime cost, works with JSON naturally
+- Only barrel-export (`index.ts`) leaf modules with no heavy side effects — avoid for large modules
+- Use `.tsx` only for files containing JSX; pure logic files use `.ts`
+
+## Patterns
+
+### Strict TSConfig
 
 Always enable strict mode and additional safety checks:
 
@@ -23,7 +35,7 @@ Always enable strict mode and additional safety checks:
 
 `noUncheckedIndexedAccess` is the single most impactful non-default flag — it catches a class of runtime errors that `strict` alone misses.
 
-## File Naming
+### File Naming
 
 | Entity | Convention | Example |
 |--------|-----------|---------|
@@ -35,7 +47,7 @@ Always enable strict mode and additional safety checks:
 
 Use `.tsx` only for files that contain JSX. Pure logic files should use `.ts` even if they're in a React project.
 
-## Import Ordering
+### Import Ordering
 
 Organize imports in this order, separated by blank lines:
 
@@ -59,7 +71,7 @@ import type { UserFormProps } from './types';
 
 Use ESLint with `eslint-plugin-import` or `@trivago/prettier-plugin-sort-imports` to enforce this automatically.
 
-## Barrel Exports
+### Barrel Exports
 
 Use barrel files (`index.ts`) **sparingly**. They can prevent tree shaking and create circular dependency issues.
 
@@ -79,7 +91,7 @@ export * from './email';
 
 **Rule**: only barrel-export leaf modules with no heavy side effects. For libraries and utils with significant dependencies, import directly from the specific file.
 
-## Type-Only Exports and Imports
+### Type-Only Exports and Imports
 
 Use `export type` and `import type` for types that have no runtime representation:
 
@@ -95,7 +107,7 @@ import { UserSchema } from '@/schemas';
 
 This ensures bundlers can safely strip type imports and avoids pulling in modules that only contribute types.
 
-## Path Aliases
+### Path Aliases
 
 Configure in both `tsconfig.json` and your bundler:
 
@@ -112,7 +124,7 @@ Configure in both `tsconfig.json` and your bundler:
 
 Use `@/` for all absolute imports within the project. Never use deep relative paths like `../../../lib/utils` — if you're going up more than one level, use the alias.
 
-## Enums vs Union Types
+### Enums vs Union Types
 
 Prefer **string union types** over enums for most cases:
 

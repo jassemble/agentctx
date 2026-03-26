@@ -1,6 +1,17 @@
 # Tailwind CSS — Utility Classes
 
-## Utility-First Approach
+## Quick Rules
+- Write styles directly in markup using utility classes — don't extract to CSS until repeated in 3+ components
+- Order classes: layout > sizing > spacing > typography > colors > borders > effects > state modifiers
+- Mobile-first: unprefixed utilities apply to all sizes, `sm:`/`md:`/`lg:` apply at that breakpoint and above
+- Use `cn()` (clsx + tailwind-merge) for conditional classes — it resolves conflicting utilities
+- Use `dark:` prefix for dark mode — toggle the `dark` class on `<html>`
+- Arbitrary values `top-[117px]` only when no scale value works — extend theme in `tailwind.config` if used often
+- Never use `!important` modifier unless overriding third-party styles you don't control
+
+## Patterns
+
+### Utility-First Approach
 
 Write styles directly in markup using utility classes. Do **not** extract into custom CSS classes until a pattern is repeated across 3+ distinct components and the design is stable.
 
@@ -14,7 +25,7 @@ Write styles directly in markup using utility classes. Do **not** extract into c
 <button className="btn-primary">Save</button>  // with @apply in CSS
 ```
 
-## Class Ordering Convention
+### Class Ordering Convention
 
 Follow a consistent ordering for readability. Group utilities in this order:
 
@@ -31,7 +42,7 @@ Follow a consistent ordering for readability. Group utilities in this order:
 <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md">
 ```
 
-## Responsive Design
+### Responsive Design
 
 Tailwind is **mobile-first**. Unprefixed utilities apply to all sizes. Prefixed utilities apply at that breakpoint **and above**.
 
@@ -47,7 +58,7 @@ Tailwind is **mobile-first**. Unprefixed utilities apply to all sizes. Prefixed 
 | `xl:` | 1280px | >=1280px |
 | `2xl:` | 1536px | >=1536px |
 
-## Dark Mode
+### Dark Mode
 
 Use the `dark:` prefix. Tailwind uses the `class` strategy by default — toggle `dark` on the `<html>` element.
 
@@ -57,7 +68,7 @@ Use the `dark:` prefix. Tailwind uses the `class` strategy by default — toggle
 
 Pair with `next-themes` or a similar library to manage the toggle and persist preference.
 
-## Arbitrary Values
+### Arbitrary Values
 
 Use square brackets for one-off values not in the default scale:
 
@@ -68,7 +79,7 @@ Use square brackets for one-off values not in the default scale:
 - Use sparingly — if you reach for arbitrary values often, extend the theme in `tailwind.config` instead.
 - Arbitrary properties: `[mask-type:luminance]` for CSS properties without utility classes.
 
-## Important Modifier
+### Important Modifier
 
 Prefix with `!` to add `!important`:
 
@@ -78,7 +89,7 @@ Prefix with `!` to add `!important`:
 
 Use only when you cannot control the source of conflicting styles (e.g., third-party component libraries).
 
-## Conditional Classes
+### Conditional Classes
 
 Use `clsx` or `cn()` (a thin wrapper combining `clsx` + `tailwind-merge`) for conditional class application:
 

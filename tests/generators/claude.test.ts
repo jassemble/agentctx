@@ -88,15 +88,12 @@ describe('generateClaude', () => {
     expect(result).toContain('Agent: frontend-developer');
   });
 
-  it('renders Context Directory routing table', () => {
+  it('renders Context Routing table', () => {
     const result = generateClaude(makeModules(), makeConfig());
-    expect(result).toContain('## Context Directory');
-    expect(result).toContain('| Need | Path | When |');
+    expect(result).toContain('## Context Routing');
     expect(result).toContain('conventions/*.md');
     expect(result).toContain('modules/*.md');
     expect(result).toContain('architecture.md');
-    expect(result).toContain('decisions.md');
-    expect(result).toContain('status.md');
   });
 
   it('only shows routing rows for directories that have files', () => {
@@ -105,8 +102,8 @@ describe('generateClaude', () => {
     });
     const modules = [makeModules()[0]];
     const result = generateClaude(modules, config);
-    expect(result).toContain('conventions/*.md');
-    expect(result).not.toContain('modules/*.md');
+    expect(result).toContain('conventions/');
+    // Task routing always mentions modules for "New feature area" row
     expect(result).not.toContain('agents/*.md');
     expect(result).not.toContain('references/*.md');
   });

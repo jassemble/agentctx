@@ -1,6 +1,18 @@
 # TypeScript — Type Patterns
 
-## Interface vs Type
+## Quick Rules
+- Use `interface` for object shapes that may be extended; use `type` for unions, intersections, and computed types
+- Model state machines with discriminated unions — a shared literal field the compiler narrows on
+- Use `unknown` instead of `any` — forces explicit narrowing before use
+- Use `satisfies` to validate a value matches a type while preserving the narrow inferred type
+- Use `as const` to preserve literal types instead of widening to string/number
+- Prefer `Record<'a' | 'b', T>` for known key sets; use index signatures with `noUncheckedIndexedAccess` for arbitrary keys
+- Use branded types to prevent mixing structurally-identical IDs (UserId vs PostId)
+- Prefer string union types over enums — zero runtime cost, works with JSON naturally
+
+## Patterns
+
+### Interface vs Type
 
 Use **`interface`** for object shapes that may be extended. Use **`type`** for unions, intersections, mapped types, and computed types.
 
@@ -23,7 +35,7 @@ type ApiResponse<T> = { data: T; meta: PaginationMeta } & TimestampFields;
 type UserKeys = keyof User;  // 'id' | 'name' | 'email'
 ```
 
-## Discriminated Unions
+### Discriminated Unions
 
 Use a shared literal field to model states. This is the **preferred pattern for state machines** — the compiler narrows exhaustively on the discriminant.
 
@@ -44,7 +56,7 @@ function render(state: AsyncState<User[]>) {
 }
 ```
 
-## `as const` and `satisfies`
+### `as const` and `satisfies`
 
 ```typescript
 // as const — preserves literal types instead of widening to string
@@ -67,7 +79,7 @@ const config = {
 
 Use `satisfies` when you want to validate a value matches a type **while preserving the narrow inferred type**.
 
-## Generic Constraints
+### Generic Constraints
 
 ```typescript
 // Constrain generics to express requirements
@@ -81,7 +93,7 @@ function findById<T extends { id: string }>(items: T[], id: string): T | undefin
 }
 ```
 
-## Branded Types
+### Branded Types
 
 Prevent mixing structurally-identical types (e.g., UserId vs PostId):
 
@@ -100,7 +112,7 @@ getUser(userId);   // OK
 getUser(postId);   // Type error — PostId is not assignable to UserId
 ```
 
-## Avoid `any` — Use `unknown` with Narrowing
+### Avoid `any` — Use `unknown` with Narrowing
 
 ```typescript
 // Bad — defeats type checking entirely
@@ -117,7 +129,7 @@ function parse(input: unknown): Data {
 
 When receiving untyped data from external sources (API responses, JSON parsing), use `unknown` and validate with Zod or manual narrowing.
 
-## Record vs Index Signatures
+### Record vs Index Signatures
 
 ```typescript
 // Record — use when keys are a known union

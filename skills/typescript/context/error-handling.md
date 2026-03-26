@@ -1,6 +1,17 @@
 # TypeScript — Error Handling
 
-## Typed Error Classes
+## Quick Rules
+- Extend `Error` with typed error classes that include a code and status — use `instanceof` to narrow in catch blocks
+- Use the Result pattern (`{ ok: true; data: T } | { ok: false; error: E }`) for expected failures (validation, lookups)
+- Throw exceptions only for unrecoverable errors (DB connection failures, invariant violations)
+- Never swallow errors silently — empty catch blocks hide bugs
+- Catch at system boundaries (API handlers, middleware, event handlers) — not scattered through business logic
+- Always rethrow unknown errors — if you handle `AppError`, let everything else propagate
+- Log with context (operation, IDs, error) — not just `error.message`
+
+## Patterns
+
+### Typed Error Classes
 
 Extend `Error` with specific fields for programmatic handling:
 
@@ -50,7 +61,7 @@ try {
 }
 ```
 
-## Result Pattern
+### Result Pattern
 
 For functions where errors are **expected** (validation, parsing, lookups), return a discriminated union instead of throwing:
 
@@ -76,7 +87,7 @@ if (!result.ok) {
 const config = result.data;  // type-narrowed to Config
 ```
 
-### When to use Result vs throw
+#### When to use Result vs throw
 
 | Use Result | Use throw |
 |-----------|-----------|
@@ -85,7 +96,7 @@ const config = result.data;  // type-narrowed to Config
 | "Not found" that's a normal case | Programming bugs (invariant violations) |
 | When the caller should choose recovery | At system boundaries (middleware catches) |
 
-## Error Boundaries in React
+### Error Boundaries in React
 
 For client-side errors, use React error boundaries at strategic points:
 
@@ -112,7 +123,7 @@ export default function DashboardError({
 
 Place error boundaries at **section granularity** — one around the dashboard, one around settings — not around every component.
 
-## Rules
+### Rules
 
 1. **Never swallow errors silently** — empty catch blocks hide bugs.
 2. **Catch at system boundaries** — API route handlers, event handlers, middleware. Don't scatter try/catch through business logic.

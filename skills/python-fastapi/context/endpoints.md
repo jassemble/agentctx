@@ -1,6 +1,17 @@
 # FastAPI — Endpoints
 
-## Router Organization
+## Quick Rules
+- Split endpoints into routers by domain — one `APIRouter` per file, included via `app.include_router()`
+- Use `Depends()` for shared logic (DB sessions, auth, pagination) — prefer `Annotated[Type, Depends(dep)]` syntax
+- Always set `response_model` on endpoints — it validates output, strips unexpected fields, and generates OpenAPI docs
+- Use `async def` for all endpoints that do I/O — never `def` with async clients
+- Keep endpoint functions thin: parse input, call a service function, return the response
+- Use the lifespan context manager for startup/shutdown — not the deprecated `on_event`
+- Set correct HTTP status codes: 201 for create, 204 for delete, 404 for not found
+
+## Patterns
+
+### Router Organization
 
 Split endpoints into routers by domain. Each router lives in its own file:
 
@@ -37,7 +48,7 @@ app.include_router(users.router)
 app.include_router(posts.router)
 ```
 
-## Dependency Injection
+### Dependency Injection
 
 Use `Depends()` for shared logic — DB sessions, auth, pagination, rate limiting:
 
@@ -66,7 +77,7 @@ async def get_me(user: CurrentUser):
 
 Use `Annotated[Type, Depends(dep)]` (Python 3.9+) instead of `param: Type = Depends(dep)` — it's cleaner and supports reuse via type aliases.
 
-## Parameter Patterns
+### Parameter Patterns
 
 ```python
 from fastapi import Path, Query, Body
@@ -91,7 +102,7 @@ async def create_item(
 - Pydantic models in function signatures are automatically parsed as **request body**.
 - A single Pydantic model param → flat body. Multiple params → nested JSON object.
 
-## Response Models and Status Codes
+### Response Models and Status Codes
 
 ```python
 @router.post("/users/", response_model=UserRead, status_code=status.HTTP_201_CREATED)
@@ -105,7 +116,7 @@ async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
 
 Always set `response_model` — it strips unexpected fields, validates output, and generates accurate OpenAPI docs.
 
-## Lifespan Events
+### Lifespan Events
 
 Use the lifespan context manager (not deprecated `on_event`):
 
@@ -123,7 +134,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 ```
 
-## CORS Configuration
+### CORS Configuration
 
 ```python
 from fastapi.middleware.cors import CORSMiddleware
