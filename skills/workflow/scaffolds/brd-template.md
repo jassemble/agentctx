@@ -4,6 +4,7 @@ title: "BRD Title"
 status: draft
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
+type: brd
 priority: P2
 affected_areas: [] # backend, frontend, mobile, qa, devops
 history:

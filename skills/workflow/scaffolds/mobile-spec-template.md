@@ -4,6 +4,7 @@ title: "Feature Title — Mobile"
 status: draft
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
+type: team
 team: mobile
 parent_spec: "NNNN"
 branch: feat/NNNN-feature-name

@@ -5,6 +5,7 @@ status: draft
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
 branch: feat/NNNN-feature-name
+type: feature
 priority: P2
 history:
   - status: draft

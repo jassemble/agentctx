@@ -4,6 +4,7 @@ title: "Feature Title — QA"
 status: draft
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
+type: team
 team: qa
 parent_spec: "NNNN"
 branch: feat/NNNN-feature-name
