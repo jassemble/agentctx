@@ -1,3 +1,7 @@
+---
+relevant-when: fetching data, Server Components, Server Actions, caching, revalidation, Suspense
+---
+
 # Next.js App Router — Data Fetching
 
 ## Quick Rules

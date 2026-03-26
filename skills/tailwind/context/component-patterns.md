@@ -1,3 +1,7 @@
+---
+relevant-when: creating reusable UI components, design system, variants, extracting patterns
+---
+
 # Tailwind CSS — Component Patterns
 
 ## Quick Rules

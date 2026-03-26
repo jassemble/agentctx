@@ -1,3 +1,7 @@
+---
+relevant-when: making design decisions about brand, audience, aesthetic direction
+---
+
 # Design Context
 
 ## Target Audience

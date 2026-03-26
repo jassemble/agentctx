@@ -1,3 +1,7 @@
+---
+relevant-when: styling, layout, colors, typography, spacing, responsive design, accessibility
+---
+
 # Design Principles
 
 ## Quick Rules

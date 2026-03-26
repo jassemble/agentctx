@@ -40,6 +40,11 @@ function isReferenceFile(mod: ContextModule, config: AgentCtxConfig): boolean {
   );
 }
 
+function extractRelevantWhen(content: string): string | null {
+  const match = content.match(/^---\n[\s\S]*?relevant-when:\s*(.+)\n[\s\S]*?---/);
+  return match ? match[1].trim() : null;
+}
+
 function extractExports(content: string): string[] {
   const exports: string[] = [];
   const lines = content.split('\n');
@@ -181,9 +186,22 @@ export function generateClaude(
   }
   parts.push('');
 
-  // Convention files structure hint
-  if (hasConventions) {
-    parts.push('> Convention files have 3 layers: **Quick Rules** (always read, ~10 lines) → **Patterns** (read when implementing) → **Don\'t** (read before submitting)');
+  // Convention Index — relevance hints so AI knows which files to read
+  const conventionModules = filtered.filter(m => isConventionFile(m, config));
+  if (conventionModules.length > 0) {
+    parts.push('### Convention files');
+    parts.push('> 3 layers: **Quick Rules** (always read) → **Patterns** (when implementing) → **Don\'t** (before submitting)');
+    parts.push('');
+    for (const mod of conventionModules) {
+      const relevance = extractRelevantWhen(mod.content);
+      const configPath = config.context.find(p => basename(p) === mod.filename && p.includes('conventions/'));
+      const displayPath = configPath ? `.agentctx/${configPath}` : mod.filename;
+      if (relevance) {
+        parts.push(`- \`${displayPath}\` — ${relevance}`);
+      } else {
+        parts.push(`- \`${displayPath}\``);
+      }
+    }
     parts.push('');
   }
 

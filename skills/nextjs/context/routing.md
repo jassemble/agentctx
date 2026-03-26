@@ -1,3 +1,7 @@
+---
+relevant-when: working with files in src/app/, creating pages, routes, layouts, or navigation
+---
+
 # Next.js App Router — Routing
 
 ## Quick Rules

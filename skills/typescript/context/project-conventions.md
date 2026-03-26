@@ -1,3 +1,7 @@
+---
+relevant-when: imports, exports, file naming, tsconfig, barrel files, code organization
+---
+
 # TypeScript — Project Conventions
 
 ## Quick Rules

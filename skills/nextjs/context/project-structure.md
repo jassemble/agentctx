@@ -1,3 +1,7 @@
+---
+relevant-when: creating new files or directories, deciding where to put code, project organization
+---
+
 # Next.js App Router — Project Structure
 
 ## Quick Rules

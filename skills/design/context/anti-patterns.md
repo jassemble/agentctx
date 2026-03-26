@@ -1,3 +1,7 @@
+---
+relevant-when: reviewing UI output, checking for AI slop, before submitting design work
+---
+
 # Design Anti-Patterns
 
 ## Quick Rules

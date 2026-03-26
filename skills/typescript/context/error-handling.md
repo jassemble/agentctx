@@ -1,3 +1,7 @@
+---
+relevant-when: try/catch, error boundaries, Result types, error classes, validation
+---
+
 # TypeScript — Error Handling
 
 ## Quick Rules

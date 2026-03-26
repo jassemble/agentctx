@@ -1,3 +1,7 @@
+---
+relevant-when: defining types, interfaces, generics, discriminated unions, type narrowing
+---
+
 # TypeScript — Type Patterns
 
 ## Quick Rules

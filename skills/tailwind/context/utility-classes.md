@@ -1,3 +1,7 @@
+---
+relevant-when: writing CSS, styling components, working with class names, responsive design
+---
+
 # Tailwind CSS — Utility Classes
 
 ## Quick Rules
