@@ -515,12 +515,82 @@ async function initInteractive(
       const { listAgents } = await import('../core/agents.js');
       const agents = await listAgents();
       if (agents.length > 0) {
-        const agentSelection = await p.multiselect({
-          message: 'Choose AI agent personalities (space to select, enter to confirm)',
-          options: agents.map(a => ({
+        // Build recommendations based on detected stack and selected skills
+        const recommendedSlugs = new Set<string>();
+        const strongRecommendSlugs = new Set<string>();
+
+        // Always recommend these core agents
+        strongRecommendSlugs.add('senior-developer');
+        strongRecommendSlugs.add('code-reviewer');
+        recommendedSlugs.add('git-workflow-master');
+
+        // Based on language/framework
+        const detectedLang = (typeof language === 'string' ? language : '') || profile?.language || '';
+        const detectedFw = (typeof framework === 'string' ? framework : '') || profile?.framework || '';
+
+        if (detectedFw === 'nextjs' || selectedSkills.includes('nextjs')) {
+          strongRecommendSlugs.add('frontend-developer');
+          recommendedSlugs.add('backend-architect');
+        }
+        if (selectedSkills.includes('design')) {
+          strongRecommendSlugs.add('ui-designer');
+          recommendedSlugs.add('ux-researcher');
+        }
+        if (selectedSkills.includes('tailwind')) {
+          recommendedSlugs.add('frontend-developer');
+        }
+        if (detectedLang === 'python' || selectedSkills.includes('python-fastapi')) {
+          strongRecommendSlugs.add('backend-architect');
+          recommendedSlugs.add('database-optimizer');
+        }
+        if (selectedSkills.includes('typescript')) {
+          recommendedSlugs.add('software-architect');
+        }
+
+        // Full-stack detection
+        if (selectedSkills.length >= 3) {
+          recommendedSlugs.add('product-manager');
+          recommendedSlugs.add('evidence-collector');
+        }
+
+        // Build options: recommended first (with hints), then top others
+        const recommended = agents.filter(a =>
+          strongRecommendSlugs.has(a.slug) || recommendedSlugs.has(a.slug)
+        );
+        const others = agents.filter(a =>
+          !strongRecommendSlugs.has(a.slug) && !recommendedSlugs.has(a.slug)
+        );
+
+        // Pick top relevant others by category
+        const topCategories = ['engineering', 'testing', 'design', 'product'];
+        const topOthers = others
+          .filter(a => topCategories.includes(a.category))
+          .slice(0, 10);
+
+        const allOptions = [
+          ...recommended.map(a => ({
             value: a.slug,
-            label: `${a.frontmatter.emoji || ''} ${a.frontmatter.name} — ${a.frontmatter.description?.slice(0, 60)}...`,
+            label: `${a.frontmatter.emoji || ''} ${a.frontmatter.name} — ${a.frontmatter.description?.slice(0, 55)}...`,
+            hint: strongRecommendSlugs.has(a.slug) ? 'recommended' : 'suggested',
           })),
+          ...topOthers.map(a => ({
+            value: a.slug,
+            label: `${a.frontmatter.emoji || ''} ${a.frontmatter.name} — ${a.frontmatter.description?.slice(0, 55)}...`,
+          })),
+        ];
+
+        // Remove duplicates
+        const seen = new Set<string>();
+        const uniqueOptions = allOptions.filter(o => {
+          if (seen.has(o.value)) return false;
+          seen.add(o.value);
+          return true;
+        });
+
+        const agentSelection = await p.multiselect({
+          message: `Choose AI agents (${agents.length} available, showing top picks)`,
+          options: uniqueOptions,
+          initialValues: [...strongRecommendSlugs].filter(s => agents.some(a => a.slug === s)),
           required: false,
         });
 
