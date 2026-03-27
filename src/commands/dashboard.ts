@@ -1721,70 +1721,93 @@ function getJS(): string {
       }
 
       var now = Date.now();
-      // Interactive dependency graph — SVG nodes with connections
+      // Interactive dependency graph — color-coded, adaptive layout
       var hasAnyDeps = data.modules.some(function(m) { return m.uses.length > 0 || m.usedBy.length > 0; });
       var graphHTML = '';
       if (hasAnyDeps && data.modules.length > 0) {
-        // Collect all unique names (modules + external deps)
         var allNodes = {};
-        var connections = [];
+        var usesConns = [];   // blue: module depends on X
+        var usedByConns = []; // green: X depends on module
+
         data.modules.forEach(function(m) {
-          allNodes[m.name] = { name: m.name, type: 'module', exports: m.exports.length, files: m.files.length };
+          allNodes[m.name] = { name: m.name, type: 'module', exports: m.exports.length, files: m.files.length, connections: 0 };
         });
         data.modules.forEach(function(m) {
           m.uses.forEach(function(dep) {
-            // Extract simple name from dependency
             var simpleName = dep.split('(')[0].split('/')[0].replace(/\s+module$/i, '').trim();
             if (!simpleName || simpleName === 'none') return;
-            if (!allNodes[simpleName]) {
-              allNodes[simpleName] = { name: simpleName, type: 'external', exports: 0, files: 0 };
-            }
-            connections.push({ from: m.name, to: simpleName });
+            if (!allNodes[simpleName]) allNodes[simpleName] = { name: simpleName, type: 'external', exports: 0, files: 0, connections: 0 };
+            allNodes[m.name].connections++;
+            allNodes[simpleName].connections++;
+            usesConns.push({ from: m.name, to: simpleName, type: 'uses' });
           });
           m.usedBy.forEach(function(dep) {
             var simpleName = dep.split('(')[0].split('/')[0].replace(/\s+module$/i, '').trim();
             if (!simpleName || simpleName === 'none') return;
-            if (!allNodes[simpleName]) {
-              allNodes[simpleName] = { name: simpleName, type: 'external', exports: 0, files: 0 };
-            }
-            connections.push({ from: simpleName, to: m.name });
+            if (!allNodes[simpleName]) allNodes[simpleName] = { name: simpleName, type: 'external', exports: 0, files: 0, connections: 0 };
+            allNodes[m.name].connections++;
+            allNodes[simpleName].connections++;
+            usedByConns.push({ from: simpleName, to: m.name, type: 'usedBy' });
           });
         });
 
         var nodeList = Object.values(allNodes);
-        var svgW = Math.max(500, nodeList.length * 160);
-        var svgH = 180;
-        var nodeW = 120;
-        var nodeH = 44;
-        var spacing = svgW / (nodeList.length + 1);
+        var allConns = usesConns.concat(usedByConns);
+        var nodeW = 120, nodeH = 44;
 
-        // Position nodes in a row
+        // Adaptive layout: row for <5, radial for 5+
         var positions = {};
-        nodeList.forEach(function(n, i) {
-          positions[n.name] = { x: spacing * (i + 1) - nodeW / 2, y: svgH / 2 - nodeH / 2 };
-        });
+        var svgW, svgH;
 
-        // Build SVG
+        if (nodeList.length < 5) {
+          // Row layout
+          svgW = Math.max(500, nodeList.length * 160);
+          svgH = 180;
+          var spacing = svgW / (nodeList.length + 1);
+          nodeList.forEach(function(n, i) {
+            positions[n.name] = { x: spacing * (i + 1) - nodeW / 2, y: svgH / 2 - nodeH / 2 };
+          });
+        } else {
+          // Radial layout — most connected in center
+          svgW = 600; svgH = 400;
+          var centerX = svgW / 2, centerY = svgH / 2;
+          nodeList.sort(function(a, b) { return b.connections - a.connections; });
+          // Most connected node in center
+          positions[nodeList[0].name] = { x: centerX - nodeW / 2, y: centerY - nodeH / 2 };
+          // Rest around in a circle
+          var radius = Math.min(svgW, svgH) / 2 - 80;
+          for (var ni = 1; ni < nodeList.length; ni++) {
+            var angle = (2 * Math.PI * (ni - 1)) / (nodeList.length - 1) - Math.PI / 2;
+            positions[nodeList[ni].name] = {
+              x: centerX + Math.cos(angle) * radius - nodeW / 2,
+              y: centerY + Math.sin(angle) * radius - nodeH / 2
+            };
+          }
+        }
+
         var svg = '<svg width="100%" height="' + svgH + '" viewBox="0 0 ' + svgW + ' ' + svgH + '" style="overflow:visible">';
+        // Arrow markers — blue for uses, green for usedBy
+        svg += '<defs>';
+        svg += '<marker id="arrow-uses" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#6c9eff"/></marker>';
+        svg += '<marker id="arrow-usedby" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#3fb950"/></marker>';
+        svg += '</defs>';
 
-        // Arrow marker
-        svg += '<defs><marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">';
-        svg += '<polygon points="0 0, 8 3, 0 6" fill="var(--color-text-secondary)" opacity="0.5"/>';
-        svg += '</marker></defs>';
-
-        // Draw connections as curved lines
-        connections.forEach(function(c) {
+        // Draw connections — curved lines with color by type
+        allConns.forEach(function(c, ci) {
           var fromPos = positions[c.from];
           var toPos = positions[c.to];
           if (!fromPos || !toPos) return;
-          var x1 = fromPos.x + nodeW / 2;
-          var y1 = fromPos.y + nodeH;
-          var x2 = toPos.x + nodeW / 2;
-          var y2 = toPos.y;
-          var midY = svgH - 10;
-          svg += '<path d="M' + x1 + ',' + y1 + ' C' + x1 + ',' + midY + ' ' + x2 + ',' + midY + ' ' + x2 + ',' + y2 + '" ' +
-            'fill="none" stroke="var(--color-primary)" stroke-width="1.5" opacity="0.3" marker-end="url(#arrowhead)" ' +
-            'data-dep-from="' + esc(c.from) + '" data-dep-to="' + esc(c.to) + '" />';
+          var x1 = fromPos.x + nodeW / 2, y1 = fromPos.y + nodeH / 2;
+          var x2 = toPos.x + nodeW / 2, y2 = toPos.y + nodeH / 2;
+          // Offset to avoid overlapping lines
+          var offset = ci * 3;
+          var mx = (x1 + x2) / 2 + offset;
+          var my = (y1 + y2) / 2 + (nodeList.length < 5 ? 40 : 0) + offset;
+          var color = c.type === 'uses' ? '#6c9eff' : '#3fb950';
+          var marker = c.type === 'uses' ? 'url(#arrow-uses)' : 'url(#arrow-usedby)';
+          svg += '<path d="M' + x1 + ',' + y1 + ' Q' + mx + ',' + my + ' ' + x2 + ',' + y2 + '" ' +
+            'fill="none" stroke="' + color + '" stroke-width="1.5" opacity="0.35" marker-end="' + marker + '" ' +
+            'data-dep-from="' + esc(c.from) + '" data-dep-to="' + esc(c.to) + '" data-dep-type="' + c.type + '" />';
         });
 
         // Draw nodes
@@ -1795,29 +1818,39 @@ function getJS(): string {
           var stroke = isModule ? 'var(--color-primary)' : 'var(--color-border)';
           var textColor = isModule ? 'var(--color-primary)' : 'var(--color-text-secondary)';
           var dash = isModule ? '' : 'stroke-dasharray="4,3"';
+          // Tooltip
+          var usesNames = allConns.filter(function(c) { return c.from === n.name && c.type === 'uses'; }).map(function(c) { return c.to; });
+          var usedByNames = allConns.filter(function(c) { return c.to === n.name && c.type === 'usedBy'; }).map(function(c) { return c.from; });
+          var tooltip = n.name;
+          if (usesNames.length) tooltip += ' | uses: ' + usesNames.join(', ');
+          if (usedByNames.length) tooltip += ' | used by: ' + usedByNames.join(', ');
 
           svg += '<g data-dep-node="' + esc(n.name) + '" style="cursor:pointer">';
+          svg += '<title>' + esc(tooltip) + '</title>';
           svg += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + nodeW + '" height="' + nodeH + '" rx="4" ';
           svg += 'fill="' + fill + '" stroke="' + stroke + '" stroke-width="1.5" ' + dash + '/>';
           svg += '<text x="' + (pos.x + nodeW / 2) + '" y="' + (pos.y + 18) + '" text-anchor="middle" ';
           svg += 'fill="' + textColor + '" font-size="12" font-weight="600" font-family="var(--font-mono)">' + esc(n.name) + '</text>';
-          if (isModule) {
-            svg += '<text x="' + (pos.x + nodeW / 2) + '" y="' + (pos.y + 34) + '" text-anchor="middle" ';
-            svg += 'fill="var(--color-text-secondary)" font-size="10">' + n.exports + ' exports / ' + n.files + ' files</text>';
-          } else {
-            svg += '<text x="' + (pos.x + nodeW / 2) + '" y="' + (pos.y + 34) + '" text-anchor="middle" ';
-            svg += 'fill="var(--color-text-secondary)" font-size="10">external</text>';
-          }
+          svg += '<text x="' + (pos.x + nodeW / 2) + '" y="' + (pos.y + 34) + '" text-anchor="middle" ';
+          svg += 'fill="var(--color-text-secondary)" font-size="10">' + (isModule ? n.exports + ' exports' : 'external') + '</text>';
           svg += '</g>';
         });
 
         svg += '</svg>';
 
+        // Legend
+        var legend = '<div style="display:flex;gap:var(--space-4);margin-top:var(--space-2);font-size:11px;color:var(--color-text-secondary)">' +
+          '<span><span style="display:inline-block;width:16px;height:2px;background:#6c9eff;margin-right:4px;vertical-align:middle"></span>depends on</span>' +
+          '<span><span style="display:inline-block;width:16px;height:2px;background:#3fb950;margin-right:4px;vertical-align:middle"></span>consumed by</span>' +
+          '<span><span style="display:inline-block;width:12px;height:12px;border:1.5px solid var(--color-primary);border-radius:2px;margin-right:4px;vertical-align:middle"></span>module</span>' +
+          '<span><span style="display:inline-block;width:12px;height:12px;border:1.5px dashed var(--color-border);border-radius:2px;margin-right:4px;vertical-align:middle"></span>external</span>' +
+          '</div>';
+
         graphHTML = '<div style="margin-bottom:var(--space-6);overflow-x:auto">' +
           '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">' +
           '<h3 style="font-size:12px;font-family:var(--font-mono);color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.5px">Module Dependencies</h3>' +
-          '<span style="font-size:11px;color:var(--color-text-secondary)">' + connections.length + ' connections</span></div>' +
-          svg + '</div>';
+          '<span style="font-size:11px;color:var(--color-text-secondary)">' + allConns.length + ' connections</span></div>' +
+          svg + legend + '</div>';
       }
 
       var html = graphHTML + '<table class="data-table"><thead><tr><th>Name</th><th>Key Files</th><th>Exports</th><th>Last Modified</th><th>Tokens</th></tr></thead><tbody>';
