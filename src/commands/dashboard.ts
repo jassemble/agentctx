@@ -235,11 +235,33 @@ async function getModules(projectRoot: string): Promise<{ modules: ModuleEntry[]
           for (const line of depsLines) {
             const usesMatch = line.match(/^-\s*Uses?:\s*(.+)/i);
             if (usesMatch) {
-              usesList.push(...usesMatch[1].split(',').map(s => s.replace(/`/g, '').trim()).filter(Boolean));
+              // Extract items, keeping parenthetical content together: "app/page.tsx (getSession, logoutAction)" = one item
+              const raw = usesMatch[1].replace(/`/g, '');
+              // Split on comma only if not inside parentheses
+              const items: string[] = [];
+              let current = '', depth = 0;
+              for (const ch of raw) {
+                if (ch === '(') depth++;
+                if (ch === ')') depth--;
+                if (ch === ',' && depth === 0) { if (current.trim()) items.push(current.trim()); current = ''; }
+                else current += ch;
+              }
+              if (current.trim()) items.push(current.trim());
+              usesList.push(...items);
             }
             const usedByMatch = line.match(/^-\s*Used\s*by:\s*(.+)/i);
             if (usedByMatch) {
-              usedByList.push(...usedByMatch[1].split(',').map(s => s.replace(/`/g, '').trim()).filter(Boolean));
+              const raw = usedByMatch[1].replace(/`/g, '');
+              const items: string[] = [];
+              let current = '', depth = 0;
+              for (const ch of raw) {
+                if (ch === '(') depth++;
+                if (ch === ')') depth--;
+                if (ch === ',' && depth === 0) { if (current.trim()) items.push(current.trim()); current = ''; }
+                else current += ch;
+              }
+              if (current.trim()) items.push(current.trim());
+              usedByList.push(...items);
             }
           }
         }
