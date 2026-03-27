@@ -984,6 +984,7 @@ function getBodyHTML(projectName: string): string {
         <h2>Activity</h2>
       </div>
       <div id="activity-content"></div>
+    </div>
     <div class="tab-panel" id="panel-files" role="tabpanel">
       <div id="files-content"></div>
     </div>
