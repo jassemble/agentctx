@@ -1846,11 +1846,30 @@ function getJS(): string {
           '<span><span style="display:inline-block;width:12px;height:12px;border:1.5px dashed var(--color-border);border-radius:2px;margin-right:4px;vertical-align:middle"></span>external</span>' +
           '</div>';
 
-        graphHTML = '<div style="margin-bottom:var(--space-6);overflow-x:auto">' +
+        // Text summary — quick scan
+        var textSummary = '';
+        data.modules.forEach(function(dm) {
+          if (dm.uses.length === 0 && dm.usedBy.length === 0) return;
+          textSummary += '<div style="display:flex;align-items:baseline;gap:var(--space-2);margin-bottom:var(--space-1);font-size:12px">';
+          textSummary += '<span style="font-weight:600;color:var(--color-primary);min-width:80px;font-family:var(--font-mono)">' + esc(dm.name) + '</span>';
+          if (dm.uses.length > 0) {
+            textSummary += '<span style="color:#6c9eff;font-size:10px">uses</span> ';
+            textSummary += dm.uses.map(function(u) { return '<span style="color:var(--color-text-primary);background:var(--color-surface);padding:1px 6px;border-radius:2px;font-family:var(--font-mono);font-size:11px">' + esc(u.split('(')[0].trim()) + '</span>'; }).join(' ');
+          }
+          if (dm.usedBy.length > 0) {
+            if (dm.uses.length > 0) textSummary += '<span style="color:var(--color-border);margin:0 var(--space-1)">|</span>';
+            textSummary += '<span style="color:#3fb950;font-size:10px">used by</span> ';
+            textSummary += dm.usedBy.map(function(u) { return '<span style="color:var(--color-text-primary);background:var(--color-surface);padding:1px 6px;border-radius:2px;font-family:var(--font-mono);font-size:11px">' + esc(u.split('(')[0].trim()) + '</span>'; }).join(' ');
+          }
+          textSummary += '</div>';
+        });
+
+        graphHTML = '<div style="margin-bottom:var(--space-6)">' +
           '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">' +
           '<h3 style="font-size:12px;font-family:var(--font-mono);color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.5px">Module Dependencies</h3>' +
           '<span style="font-size:11px;color:var(--color-text-secondary)">' + allConns.length + ' connections</span></div>' +
-          svg + legend + '</div>';
+          textSummary +
+          '<div style="margin-top:var(--space-4);overflow-x:auto">' + svg + legend + '</div></div>';
       }
 
       var html = graphHTML + '<table class="data-table"><thead><tr><th>Name</th><th>Key Files</th><th>Exports</th><th>Last Modified</th><th>Tokens</th></tr></thead><tbody>';
