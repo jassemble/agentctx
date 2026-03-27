@@ -1188,6 +1188,41 @@ function getJS(): string {
         return;
       }
 
+      // Dependency node hover/click
+      var depNode = target.closest('[data-dep-node]');
+      if (depNode) {
+        var nodeName = depNode.dataset.depNode;
+        // Highlight connected paths
+        document.querySelectorAll('[data-dep-from], [data-dep-to]').forEach(function(path) {
+          if (path.dataset.depFrom === nodeName || path.dataset.depTo === nodeName) {
+            path.setAttribute('opacity', '0.8');
+            path.setAttribute('stroke-width', '2.5');
+          } else {
+            path.setAttribute('opacity', '0.1');
+          }
+        });
+        // Dim unconnected nodes
+        document.querySelectorAll('[data-dep-node]').forEach(function(node) {
+          var nn = node.dataset.depNode;
+          var connected = nn === nodeName ||
+            document.querySelector('[data-dep-from="' + nodeName + '"][data-dep-to="' + nn + '"]') ||
+            document.querySelector('[data-dep-from="' + nn + '"][data-dep-to="' + nodeName + '"]');
+          node.style.opacity = connected ? '1' : '0.3';
+        });
+        return;
+      }
+
+      // Reset graph on clicking outside
+      if (!target.closest('[data-dep-node]') && document.querySelector('[data-dep-node]')) {
+        document.querySelectorAll('[data-dep-from], [data-dep-to]').forEach(function(path) {
+          path.setAttribute('opacity', '0.3');
+          path.setAttribute('stroke-width', '1.5');
+        });
+        document.querySelectorAll('[data-dep-node]').forEach(function(node) {
+          node.style.opacity = '1';
+        });
+      }
+
       // Files tab file click
       var fileItem = target.closest('[data-file-path]');
       if (fileItem) {
@@ -1686,29 +1721,103 @@ function getJS(): string {
       }
 
       var now = Date.now();
-      // Dependency graph
+      // Interactive dependency graph — SVG nodes with connections
       var hasAnyDeps = data.modules.some(function(m) { return m.uses.length > 0 || m.usedBy.length > 0; });
       var graphHTML = '';
-      if (hasAnyDeps) {
-        graphHTML = '<div style="margin-bottom:var(--space-6);padding:var(--space-4);border:1px solid var(--color-border);border-radius:var(--radius-sm)">' +
-          '<h3 style="font-size:12px;font-family:var(--font-mono);color:var(--color-text-secondary);margin-bottom:var(--space-3);text-transform:uppercase;letter-spacing:0.5px">Module Dependencies</h3>';
-        for (var di = 0; di < data.modules.length; di++) {
-          var dm = data.modules[di];
-          if (dm.uses.length === 0 && dm.usedBy.length === 0) continue;
-          graphHTML += '<div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2);font-size:12px">';
-          graphHTML += '<span style="font-weight:600;color:var(--color-primary);min-width:80px">' + esc(dm.name) + '</span>';
-          if (dm.uses.length > 0) {
-            graphHTML += '<span style="color:var(--color-text-secondary)">uses</span> ';
-            graphHTML += dm.uses.map(function(u) { return '<span style="color:var(--color-text-primary);background:var(--color-surface);padding:1px 6px;border-radius:2px;font-family:var(--font-mono);font-size:11px">' + esc(u) + '</span>'; }).join(' ');
+      if (hasAnyDeps && data.modules.length > 0) {
+        // Collect all unique names (modules + external deps)
+        var allNodes = {};
+        var connections = [];
+        data.modules.forEach(function(m) {
+          allNodes[m.name] = { name: m.name, type: 'module', exports: m.exports.length, files: m.files.length };
+        });
+        data.modules.forEach(function(m) {
+          m.uses.forEach(function(dep) {
+            // Extract simple name from dependency
+            var simpleName = dep.split('(')[0].split('/')[0].replace(/\s+module$/i, '').trim();
+            if (!simpleName || simpleName === 'none') return;
+            if (!allNodes[simpleName]) {
+              allNodes[simpleName] = { name: simpleName, type: 'external', exports: 0, files: 0 };
+            }
+            connections.push({ from: m.name, to: simpleName });
+          });
+          m.usedBy.forEach(function(dep) {
+            var simpleName = dep.split('(')[0].split('/')[0].replace(/\s+module$/i, '').trim();
+            if (!simpleName || simpleName === 'none') return;
+            if (!allNodes[simpleName]) {
+              allNodes[simpleName] = { name: simpleName, type: 'external', exports: 0, files: 0 };
+            }
+            connections.push({ from: simpleName, to: m.name });
+          });
+        });
+
+        var nodeList = Object.values(allNodes);
+        var svgW = Math.max(500, nodeList.length * 160);
+        var svgH = 180;
+        var nodeW = 120;
+        var nodeH = 44;
+        var spacing = svgW / (nodeList.length + 1);
+
+        // Position nodes in a row
+        var positions = {};
+        nodeList.forEach(function(n, i) {
+          positions[n.name] = { x: spacing * (i + 1) - nodeW / 2, y: svgH / 2 - nodeH / 2 };
+        });
+
+        // Build SVG
+        var svg = '<svg width="100%" height="' + svgH + '" viewBox="0 0 ' + svgW + ' ' + svgH + '" style="overflow:visible">';
+
+        // Arrow marker
+        svg += '<defs><marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">';
+        svg += '<polygon points="0 0, 8 3, 0 6" fill="var(--color-text-secondary)" opacity="0.5"/>';
+        svg += '</marker></defs>';
+
+        // Draw connections as curved lines
+        connections.forEach(function(c) {
+          var fromPos = positions[c.from];
+          var toPos = positions[c.to];
+          if (!fromPos || !toPos) return;
+          var x1 = fromPos.x + nodeW / 2;
+          var y1 = fromPos.y + nodeH;
+          var x2 = toPos.x + nodeW / 2;
+          var y2 = toPos.y;
+          var midY = svgH - 10;
+          svg += '<path d="M' + x1 + ',' + y1 + ' C' + x1 + ',' + midY + ' ' + x2 + ',' + midY + ' ' + x2 + ',' + y2 + '" ' +
+            'fill="none" stroke="var(--color-primary)" stroke-width="1.5" opacity="0.3" marker-end="url(#arrowhead)" ' +
+            'data-dep-from="' + esc(c.from) + '" data-dep-to="' + esc(c.to) + '" />';
+        });
+
+        // Draw nodes
+        nodeList.forEach(function(n) {
+          var pos = positions[n.name];
+          var isModule = n.type === 'module';
+          var fill = isModule ? 'var(--color-surface)' : 'transparent';
+          var stroke = isModule ? 'var(--color-primary)' : 'var(--color-border)';
+          var textColor = isModule ? 'var(--color-primary)' : 'var(--color-text-secondary)';
+          var dash = isModule ? '' : 'stroke-dasharray="4,3"';
+
+          svg += '<g data-dep-node="' + esc(n.name) + '" style="cursor:pointer">';
+          svg += '<rect x="' + pos.x + '" y="' + pos.y + '" width="' + nodeW + '" height="' + nodeH + '" rx="4" ';
+          svg += 'fill="' + fill + '" stroke="' + stroke + '" stroke-width="1.5" ' + dash + '/>';
+          svg += '<text x="' + (pos.x + nodeW / 2) + '" y="' + (pos.y + 18) + '" text-anchor="middle" ';
+          svg += 'fill="' + textColor + '" font-size="12" font-weight="600" font-family="var(--font-mono)">' + esc(n.name) + '</text>';
+          if (isModule) {
+            svg += '<text x="' + (pos.x + nodeW / 2) + '" y="' + (pos.y + 34) + '" text-anchor="middle" ';
+            svg += 'fill="var(--color-text-secondary)" font-size="10">' + n.exports + ' exports / ' + n.files + ' files</text>';
+          } else {
+            svg += '<text x="' + (pos.x + nodeW / 2) + '" y="' + (pos.y + 34) + '" text-anchor="middle" ';
+            svg += 'fill="var(--color-text-secondary)" font-size="10">external</text>';
           }
-          if (dm.usedBy.length > 0) {
-            if (dm.uses.length > 0) graphHTML += '<span style="color:var(--color-border);margin:0 var(--space-2)">|</span>';
-            graphHTML += '<span style="color:var(--color-text-secondary)">used by</span> ';
-            graphHTML += dm.usedBy.map(function(u) { return '<span style="color:var(--color-text-primary);background:var(--color-surface);padding:1px 6px;border-radius:2px;font-family:var(--font-mono);font-size:11px">' + esc(u) + '</span>'; }).join(' ');
-          }
-          graphHTML += '</div>';
-        }
-        graphHTML += '</div>';
+          svg += '</g>';
+        });
+
+        svg += '</svg>';
+
+        graphHTML = '<div style="margin-bottom:var(--space-6);overflow-x:auto">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-3)">' +
+          '<h3 style="font-size:12px;font-family:var(--font-mono);color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:0.5px">Module Dependencies</h3>' +
+          '<span style="font-size:11px;color:var(--color-text-secondary)">' + connections.length + ' connections</span></div>' +
+          svg + '</div>';
       }
 
       var html = graphHTML + '<table class="data-table"><thead><tr><th>Name</th><th>Key Files</th><th>Exports</th><th>Last Modified</th><th>Tokens</th></tr></thead><tbody>';
