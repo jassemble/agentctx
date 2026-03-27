@@ -32,6 +32,8 @@ interface ModuleEntry {
   filename: string;
   exports: string[];
   files: string[];
+  uses: string[];
+  usedBy: string[];
   lastModified: string;
   tokens: number;
 }
@@ -224,11 +226,31 @@ async function getModules(projectRoot: string): Promise<{ modules: ModuleEntry[]
           }
         }
 
+        // Parse dependencies
+        const usesList: string[] = [];
+        const usedByList: string[] = [];
+        const depsMatch = content.match(/##\s*Dependencies?\s*\n([\s\S]*?)(?=\n##|\n$|$)/i);
+        if (depsMatch) {
+          const depsLines = depsMatch[1].split('\n');
+          for (const line of depsLines) {
+            const usesMatch = line.match(/^-\s*Uses?:\s*(.+)/i);
+            if (usesMatch) {
+              usesList.push(...usesMatch[1].split(',').map(s => s.replace(/`/g, '').trim()).filter(Boolean));
+            }
+            const usedByMatch = line.match(/^-\s*Used\s*by:\s*(.+)/i);
+            if (usedByMatch) {
+              usedByList.push(...usedByMatch[1].split(',').map(s => s.replace(/`/g, '').trim()).filter(Boolean));
+            }
+          }
+        }
+
         modules.push({
           name,
           filename: entry,
           exports: exportsList,
           files: filesList,
+          uses: usesList,
+          usedBy: usedByList,
           lastModified: fileStat.mtime.toISOString(),
           tokens: estimateTokens(content),
         });
@@ -1664,7 +1686,32 @@ function getJS(): string {
       }
 
       var now = Date.now();
-      var html = '<table class="data-table"><thead><tr><th>Name</th><th>Key Files</th><th>Exports</th><th>Last Modified</th><th>Tokens</th></tr></thead><tbody>';
+      // Dependency graph
+      var hasAnyDeps = data.modules.some(function(m) { return m.uses.length > 0 || m.usedBy.length > 0; });
+      var graphHTML = '';
+      if (hasAnyDeps) {
+        graphHTML = '<div style="margin-bottom:var(--space-6);padding:var(--space-4);border:1px solid var(--color-border);border-radius:var(--radius-sm)">' +
+          '<h3 style="font-size:12px;font-family:var(--font-mono);color:var(--color-text-secondary);margin-bottom:var(--space-3);text-transform:uppercase;letter-spacing:0.5px">Module Dependencies</h3>';
+        for (var di = 0; di < data.modules.length; di++) {
+          var dm = data.modules[di];
+          if (dm.uses.length === 0 && dm.usedBy.length === 0) continue;
+          graphHTML += '<div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2);font-size:12px">';
+          graphHTML += '<span style="font-weight:600;color:var(--color-primary);min-width:80px">' + esc(dm.name) + '</span>';
+          if (dm.uses.length > 0) {
+            graphHTML += '<span style="color:var(--color-text-secondary)">uses</span> ';
+            graphHTML += dm.uses.map(function(u) { return '<span style="color:var(--color-text-primary);background:var(--color-surface);padding:1px 6px;border-radius:2px;font-family:var(--font-mono);font-size:11px">' + esc(u) + '</span>'; }).join(' ');
+          }
+          if (dm.usedBy.length > 0) {
+            if (dm.uses.length > 0) graphHTML += '<span style="color:var(--color-border);margin:0 var(--space-2)">|</span>';
+            graphHTML += '<span style="color:var(--color-text-secondary)">used by</span> ';
+            graphHTML += dm.usedBy.map(function(u) { return '<span style="color:var(--color-text-primary);background:var(--color-surface);padding:1px 6px;border-radius:2px;font-family:var(--font-mono);font-size:11px">' + esc(u) + '</span>'; }).join(' ');
+          }
+          graphHTML += '</div>';
+        }
+        graphHTML += '</div>';
+      }
+
+      var html = graphHTML + '<table class="data-table"><thead><tr><th>Name</th><th>Key Files</th><th>Exports</th><th>Last Modified</th><th>Tokens</th></tr></thead><tbody>';
 
       for (var i = 0; i < data.modules.length; i++) {
         var m = data.modules[i];
@@ -1692,6 +1739,16 @@ function getJS(): string {
           html += '<h4 style="margin-top:12px">Exports</h4><ul>';
           for (var ei = 0; ei < m.exports.length; ei++) html += '<li>' + esc(m.exports[ei]) + '</li>';
           html += '</ul>';
+        }
+        if (m.uses.length > 0) {
+          html += '<h4 style="margin-top:12px">Uses</h4><div style="display:flex;gap:var(--space-2);flex-wrap:wrap">';
+          for (var ui = 0; ui < m.uses.length; ui++) html += '<span style="background:var(--color-surface);padding:2px 8px;border-radius:2px;font-size:12px;font-family:var(--font-mono)">' + esc(m.uses[ui]) + '</span>';
+          html += '</div>';
+        }
+        if (m.usedBy.length > 0) {
+          html += '<h4 style="margin-top:12px">Used By</h4><div style="display:flex;gap:var(--space-2);flex-wrap:wrap">';
+          for (var ubi = 0; ubi < m.usedBy.length; ubi++) html += '<span style="background:var(--color-surface);padding:2px 8px;border-radius:2px;font-size:12px;font-family:var(--font-mono)">' + esc(m.usedBy[ubi]) + '</span>';
+          html += '</div>';
         }
         html += '</div></td></tr>';
       }
