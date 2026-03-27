@@ -946,6 +946,7 @@ function getBodyHTML(projectName: string): string {
       <div class="tab" data-tab="context" role="tab" tabindex="0">Context</div>
       <div class="tab" data-tab="health" role="tab" tabindex="0">Health</div>
       <div class="tab" data-tab="activity" role="tab" tabindex="0">Activity</div>
+      <div class="tab" data-tab="files" role="tab" tabindex="0">Files</div>
     </div>
   </div>
 
@@ -983,6 +984,9 @@ function getBodyHTML(projectName: string): string {
         <h2>Activity</h2>
       </div>
       <div id="activity-content"></div>
+    <div class="tab-panel" id="panel-files" role="tabpanel">
+      <div id="files-content"></div>
+    </div>
     </div>
   </div>
 
@@ -1060,6 +1064,7 @@ function getJS(): string {
       else if (tab.dataset.tab === 'context') loadContext();
       else if (tab.dataset.tab === 'health') loadHealth();
       else if (tab.dataset.tab === 'activity') loadActivity();
+      else if (tab.dataset.tab === 'files') loadFiles();
     }
 
     // ── Event delegation ──
@@ -1160,6 +1165,25 @@ function getJS(): string {
         return;
       }
 
+      // Files tab file click
+      var fileItem = target.closest('[data-file-path]');
+      if (fileItem) {
+        document.querySelectorAll('[data-file-path]').forEach(function(f) { f.classList.remove('active'); });
+        fileItem.classList.add('active');
+        fetch('/api/file?path=' + encodeURIComponent(fileItem.dataset.filePath))
+          .then(function(r) { return r.text(); })
+          .then(function(text) {
+            var tokens = Math.ceil(text.split(/\\s+/).filter(function(w) { return w.length > 0; }).length * 1.33);
+            var viewer = document.getElementById('files-viewer');
+            if (viewer) {
+              viewer.innerHTML = '<div class="ctx-viewer-header"><span>' + esc(fileItem.dataset.filePath) + '</span><span>' + tokens + ' tokens</span></div>' +
+                '<div class="md">' + marked.parse(text) + '</div>';
+              viewer.querySelectorAll('pre code').forEach(function(b) { hljs.highlightElement(b); });
+            }
+          });
+        return;
+      }
+
       // Context folder toggle
       var ctxToggle = target.closest('[data-ctx-toggle]');
       if (ctxToggle) {
@@ -1225,6 +1249,23 @@ function getJS(): string {
       if (recItem) {
         copyRec(recItem, recItem.dataset.rec);
         return;
+      }
+    });
+
+    // Files tab search filter
+    document.addEventListener('input', function(e) {
+      if (e.target && e.target.id === 'files-search') {
+        var q = e.target.value.toLowerCase();
+        document.querySelectorAll('[data-file-path]').forEach(function(item) {
+          var path = (item.dataset.filePath || '').toLowerCase();
+          item.style.display = path.includes(q) ? '' : 'none';
+        });
+        document.querySelectorAll('#files-file-list .ctx-folder').forEach(function(folder) {
+          var hasVisible = false;
+          folder.querySelectorAll('[data-file-path]').forEach(function(f) { if (f.style.display !== 'none') hasVisible = true; });
+          folder.style.display = hasVisible ? '' : 'none';
+          if (q && hasVisible) folder.classList.remove('collapsed');
+        });
       }
     });
 
@@ -1327,6 +1368,66 @@ function getJS(): string {
         }, 300);
       }
     });
+
+    // ── Files (all project md files) ──
+    async function loadFiles() {
+      var res = await fetch('/api/files');
+      var files = await res.json();
+      var el = document.getElementById('files-content');
+
+      if (files.length === 0) {
+        el.innerHTML = '<div class="empty-state"><h3>No markdown files found</h3></div>';
+        return;
+      }
+
+      // Build tree from file paths
+      var tree = {};
+      for (var i = 0; i < files.length; i++) {
+        var parts = files[i].path.split('/');
+        var fileName = parts.pop();
+        var dirKey = parts.join('/') || '.';
+        if (!tree[dirKey]) tree[dirKey] = [];
+        tree[dirKey].push({ name: fileName, path: files[i].path, tokens: files[i].tokens });
+      }
+
+      var treeHTML = '';
+      var dirs = Object.keys(tree).sort();
+      for (var d = 0; d < dirs.length; d++) {
+        var dir = dirs[d];
+        var dirFiles = tree[dir];
+        if (dir === '.') {
+          for (var f = 0; f < dirFiles.length; f++) {
+            treeHTML += '<div class="ctx-file" data-file-path="' + esc(dirFiles[f].path) + '" tabindex="0" title="' + esc(dirFiles[f].path) + '">' +
+              '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 1.5A1.5 1.5 0 014.5 0h5.379a1.5 1.5 0 011.06.44l2.122 2.12A1.5 1.5 0 0113.5 3.622V14.5a1.5 1.5 0 01-1.5 1.5h-8A1.5 1.5 0 013 14.5v-13z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 7h5M5.5 9.5h5M5.5 12h3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>' +
+              '<span>' + esc(dirFiles[f].name) + '</span>' +
+              '<span class="tokens">' + dirFiles[f].tokens + '</span></div>';
+          }
+        } else {
+          var displayDir = dir.split('/').join(' / ');
+          treeHTML += '<div class="ctx-folder">' +
+            '<div class="ctx-folder-head" data-ctx-toggle="1">' +
+            '<svg class="ctx-folder-chevron" width="12" height="12" viewBox="0 0 12 12"><path d="M4.5 2L8.5 6L4.5 10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+            '<span>' + esc(displayDir) + '</span>' +
+            '<span class="tokens" style="margin-left:auto">' + dirFiles.length + '</span>' +
+            '</div><div class="ctx-folder-children" style="padding-left:16px">';
+          for (var f = 0; f < dirFiles.length; f++) {
+            treeHTML += '<div class="ctx-file" data-file-path="' + esc(dirFiles[f].path) + '" tabindex="0" title="' + esc(dirFiles[f].path) + '">' +
+              '<svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 1.5A1.5 1.5 0 014.5 0h5.379a1.5 1.5 0 011.06.44l2.122 2.12A1.5 1.5 0 0113.5 3.622V14.5a1.5 1.5 0 01-1.5 1.5h-8A1.5 1.5 0 013 14.5v-13z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 7h5M5.5 9.5h5M5.5 12h3" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>' +
+              '<span>' + esc(dirFiles[f].name) + '</span>' +
+              '<span class="tokens">' + dirFiles[f].tokens + '</span></div>';
+          }
+          treeHTML += '</div></div>';
+        }
+      }
+
+      el.innerHTML = '<div class="context-grid">' +
+        '<div class="context-tree">' +
+        '<div style="padding:var(--space-2);border-bottom:1px solid var(--color-border);margin-bottom:var(--space-2);font-size:11px;color:var(--color-text-secondary)">' + files.length + ' markdown files</div>' +
+        '<input class="ctx-search" id="files-search" placeholder="Filter files..." style="margin:0 var(--space-2) var(--space-2);width:calc(100% - 16px)" />' +
+        '<div id="files-file-list">' + treeHTML + '</div>' +
+        '</div>' +
+        '<div class="context-viewer" id="files-viewer"><div class="empty-state"><p>Select a file to view</p></div></div></div>';
+    }
 
     // ── Specs ──
     async function loadSpecs() {
@@ -2119,6 +2220,39 @@ async function handleAPIRequest(
         jsonResponse(res, { error: String(err) }, 500);
       }
     });
+    return true;
+  }
+
+  // API: All project markdown files (like old serve command)
+  if (url.pathname === '/api/files') {
+    const files: { path: string; name: string; tokens: number }[] = [];
+    const IGNORE = new Set(['node_modules', '.git', '.next', 'dist', '__pycache__', '.turbo', '.cache', 'coverage']);
+
+    async function scanDir(dir: string): Promise<void> {
+      if (!existsSync(dir)) return;
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (IGNORE.has(entry.name)) continue;
+        const fullPath = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          await scanDir(fullPath);
+        } else if (entry.name.endsWith('.md') || entry.name.endsWith('.mdc')) {
+          try {
+            const content = await readFile(fullPath, 'utf-8');
+            const words = content.split(/\s+/).filter(w => w.length > 0).length;
+            files.push({
+              path: relative(projectRoot, fullPath),
+              name: entry.name,
+              tokens: Math.ceil(words * 1.33),
+            });
+          } catch { /* skip */ }
+        }
+      }
+    }
+
+    await scanDir(projectRoot);
+    files.sort((a, b) => a.path.localeCompare(b.path));
+    jsonResponse(res, files);
     return true;
   }
 
