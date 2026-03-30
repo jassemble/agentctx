@@ -133,7 +133,20 @@ async function getSpecs(projectRoot: string): Promise<{ specs: SpecEntry[] }> {
   const specs: SpecEntry[] = [];
   const seen = new Set<string>();
 
-  // 1. Parse INDEX.md table as fallback
+  // Build ID → real filename map from directory scan
+  const idToFile = new Map<string, string>();
+  if (existsSync(specsDir)) {
+    try {
+      const entries = await readdir(specsDir);
+      for (const entry of entries) {
+        if (!entry.endsWith('.md') || entry === 'INDEX.md' || entry.startsWith('_')) continue;
+        const idMatch = entry.match(/^(\d{4})/);
+        if (idMatch) idToFile.set(idMatch[1], entry);
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 1. Parse INDEX.md table — use real filenames from disk
   const indexPath = join(specsDir, 'INDEX.md');
   if (existsSync(indexPath)) {
     try {
@@ -142,47 +155,46 @@ async function getSpecs(projectRoot: string): Promise<{ specs: SpecEntry[] }> {
       for (const line of lines) {
         const match = line.match(/\|\s*(\d{4})\s*\|\s*(.*?)\s*\|\s*(draft|approved|in-progress|completed|cancelled)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|/i);
         if (match) {
-          const [, id, title, status, priority, branch] = match;
+          const [, id, rawTitle, status, priority, branch] = match;
+          const realFile = idToFile.get(id);
+          if (!realFile) continue; // skip INDEX entries with no matching file
           seen.add(id);
+          // Strip markdown links: [text](url) → text
+          const title = rawTitle.trim().replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
           specs.push({
             id,
-            title: title.trim(),
+            title,
             status: status.toLowerCase(),
             priority: priority.trim() || 'P2',
             branch: branch.trim(),
-            path: `.agentctx/specs/${id}-${title.trim().toLowerCase().replace(/\s+/g, '-')}.md`,
+            path: `.agentctx/specs/${realFile}`,
           });
         }
       }
     } catch { /* ignore */ }
   }
 
-  // 2. Scan specs/ directory for ALL .md files (except INDEX.md and _templates/)
-  if (existsSync(specsDir)) {
+  // 2. Scan specs/ directory for files not already covered by INDEX.md
+  for (const [id, entry] of idToFile) {
+    if (seen.has(id)) continue;
+    const fullPath = join(specsDir, entry);
     try {
-      const entries = await readdir(specsDir);
-      for (const entry of entries) {
-        if (!entry.endsWith('.md') || entry === 'INDEX.md' || entry.startsWith('_')) continue;
-        const fullPath = join(specsDir, entry);
-        try {
-          const fileStat = await stat(fullPath);
-          if (fileStat.isDirectory()) continue;
-        } catch { continue; }
+      const fileStat = await stat(fullPath);
+      if (fileStat.isDirectory()) continue;
+    } catch { continue; }
 
-        try {
-          const content = await readFile(fullPath, 'utf-8');
-          const fm = parseFrontmatter(content);
-          const id = fm.id || entry.match(/^(\d{4})/)?.[1] || '';
-          if (!id || seen.has(id)) continue;
-          seen.add(id);
-          const title = fm.title || entry.replace(/^\d{4}-/, '').replace(/\.md$/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-          const status = fm.status || 'draft';
-          const branch = fm.branch || `feat/${id}-${entry.replace(/^\d{4}-/, '').replace(/\.md$/, '')}`;
-          const priority = fm.priority || 'P2';
-          specs.push({ id, title, status: status.toLowerCase(), branch, priority, path: `.agentctx/specs/${entry}` });
-        } catch { /* skip individual file errors */ }
-      }
-    } catch { /* ignore */ }
+    try {
+      const content = await readFile(fullPath, 'utf-8');
+      const fm = parseFrontmatter(content);
+      const fileId = fm.id || id;
+      if (seen.has(fileId)) continue;
+      seen.add(fileId);
+      const title = fm.title || entry.replace(/^\d{4}-/, '').replace(/\.md$/, '').replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const status = fm.status || 'draft';
+      const branch = fm.branch || `feat/${fileId}-${entry.replace(/^\d{4}-/, '').replace(/\.md$/, '')}`;
+      const priority = fm.priority || 'P2';
+      specs.push({ id: fileId, title, status: status.toLowerCase(), branch, priority, path: `.agentctx/specs/${entry}` });
+    } catch { /* skip individual file errors */ }
   }
 
   return { specs };
@@ -1614,39 +1626,72 @@ function getJS(): string {
     async function viewSpec(path) {
       try {
         var res = await fetch('/api/spec?path=' + encodeURIComponent(path));
+        if (!res.ok) { showToast('Spec not found: ' + path); return; }
         var md = await res.text();
         currentEditPath = path;
 
-        // Parse status from frontmatter
-        var statusMatch = md.match(/^---[\\s\\S]*?status:\\s*(\\w[\\w-]*)/);
-        var status = statusMatch ? statusMatch[1] : 'draft';
-        var idMatch = md.match(/^---[\\s\\S]*?id:\\s*"?(\\d+)"?/);
-        var specId = idMatch ? idMatch[1] : '';
+        // Parse frontmatter — extract between --- markers
+        var fmBlock = md.split('---');
+        var fm = fmBlock.length >= 3 ? fmBlock[1] : '';
+        var status = 'draft';
+        var specId = '';
+        var specTitle = '';
+        var specBranch = '';
 
-        // Build action buttons based on status — edit only on draft
+        fm.split('\\n').forEach(function(line) {
+          var m;
+          m = line.match(/^status:\\s*(.+)/);
+          if (m) status = m[1].trim();
+          m = line.match(/^id:\\s*"?(\\d+)"?/);
+          if (m) specId = m[1];
+          m = line.match(/^title:\\s*"?(.+?)"?\\s*$/);
+          if (m) specTitle = m[1];
+          m = line.match(/^branch:\\s*(.+)/);
+          if (m) specBranch = m[1].trim();
+        });
+
+        // Fallback title from filename
+        if (!specTitle) {
+          specTitle = path.split('/').pop().replace('.md', '').replace(/^\\d+-/, '').split('-').join(' ');
+        }
+
+        // Header: #ID — Title + badge
+        var filename = path.split('/').pop() || path;
+        var header = '<div style="margin-bottom:var(--space-4);padding-right:40px">' +
+          '<div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)">' +
+          '<span style="font-size:16px;font-weight:600;font-family:var(--font-mono);color:var(--color-text-primary)">#' + esc(specId || '?') + '</span>' +
+          '<span style="font-size:16px;font-weight:600;color:var(--color-text-primary)">' + esc(specTitle) + '</span>' +
+          badgeHTML(status) +
+          '</div>' +
+          '<div style="font-size:11px;color:var(--color-text-secondary);font-family:var(--font-mono)" title="' + esc(path) + '">' + esc(filename) + '</div>' +
+          '</div>';
+
+        // Actions: state-specific, on their own row
         var actions = '';
-
         if (status === 'draft') {
-          actions += '<button class="btn" data-edit-spec="' + esc(path) + '">Edit</button>';
-          actions += ' <button class="btn btn-success" data-modal-approve="' + esc(path) + '">Approve</button>';
+          actions = '<div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-4);padding-bottom:var(--space-3);border-bottom:1px solid var(--color-border)">' +
+            '<button class="btn" data-edit-spec="' + esc(path) + '">Edit</button>' +
+            '<button class="btn btn-success" data-modal-approve="' + esc(path) + '">Approve</button>' +
+            '</div>';
         } else if (status === 'approved') {
-          actions += '<button class="btn btn-primary" data-modal-implement="' + esc(path) + '" data-modal-implement-id="' + esc(specId) + '">Implement</button>';
+          actions = '<div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-4);padding-bottom:var(--space-3);border-bottom:1px solid var(--color-border)">' +
+            '<button class="btn" data-edit-spec="' + esc(path) + '">Edit</button>' +
+            '<button class="btn btn-primary" data-modal-implement="' + esc(path) + '" data-modal-implement-id="' + esc(specId) + '">Implement in Claude Code</button>' +
+            '</div>';
         } else if (status === 'in-progress') {
-          actions += '<span style="color:var(--color-warning);font-size:12px">In Progress</span>';
+          actions = '<div style="display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-4);padding-bottom:var(--space-3);border-bottom:1px solid var(--color-border)">' +
+            (specBranch ? '<span style="font-size:12px;color:var(--color-text-secondary)">Branch: <span style="font-family:var(--font-mono);color:var(--color-primary)">' + esc(specBranch) + '</span></span>' : '') +
+            '<button class="btn" data-edit-spec="' + esc(path) + '">Edit</button>' +
+            '</div>';
         } else if (status === 'completed') {
-          actions += '<span style="color:var(--color-success);font-size:12px">Completed</span>';
+          actions = specBranch ? '<div style="margin-bottom:var(--space-4);padding-bottom:var(--space-3);border-bottom:1px solid var(--color-border);font-size:12px;color:var(--color-text-secondary)">' +
+            'Branch: <span style="font-family:var(--font-mono);color:var(--color-success)">' + esc(specBranch) + '</span>' +
+            '</div>' : '';
         }
 
         var mc = document.getElementById('modal-content');
-        mc.innerHTML =
-          '<div class="modal-header">' +
-            '<div class="modal-header-left">' +
-              '<span class="path">' + esc(path) + '</span>' +
-              badgeHTML(status) +
-            '</div>' +
-            '<div class="modal-header-right">' + actions + '</div>' +
-          '</div>' +
-          '<div class="md" style="max-height:60vh;overflow-y:auto">' + marked.parse(md) + '</div>';
+        mc.innerHTML = header + actions +
+          '<div class="md" style="overflow-y:auto">' + marked.parse(md) + '</div>';
 
         document.getElementById('modal-overlay').classList.add('show');
       } catch (err) {
@@ -1756,7 +1801,7 @@ function getJS(): string {
         });
         data.modules.forEach(function(m) {
           m.uses.forEach(function(dep) {
-            var simpleName = dep.split('(')[0].split('/')[0].replace(/\s+module$/i, '').trim();
+            var simpleName = dep.split('(')[0].split('/')[0].replace(/\\s+module$/i, '').trim();
             if (!simpleName || simpleName === 'none') return;
             if (!allNodes[simpleName]) allNodes[simpleName] = { name: simpleName, type: 'external', exports: 0, files: 0, connections: 0 };
             allNodes[m.name].connections++;
@@ -1764,7 +1809,7 @@ function getJS(): string {
             usesConns.push({ from: m.name, to: simpleName, type: 'uses' });
           });
           m.usedBy.forEach(function(dep) {
-            var simpleName = dep.split('(')[0].split('/')[0].replace(/\s+module$/i, '').trim();
+            var simpleName = dep.split('(')[0].split('/')[0].replace(/\\s+module$/i, '').trim();
             if (!simpleName || simpleName === 'none') return;
             if (!allNodes[simpleName]) allNodes[simpleName] = { name: simpleName, type: 'external', exports: 0, files: 0, connections: 0 };
             allNodes[m.name].connections++;
