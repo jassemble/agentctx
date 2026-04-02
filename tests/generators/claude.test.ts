@@ -8,18 +8,21 @@ function makeModules(): ContextModule[] {
     {
       title: 'Routing',
       filename: 'routing.md',
+      relativePath: 'context/conventions/nextjs/routing.md',
       content: '# Routing\n\nUse App Router for all routes.',
       lastModified: new Date('2025-01-01'),
     },
     {
       title: 'Data Fetching',
       filename: 'data-fetching.md',
+      relativePath: 'context/conventions/nextjs/data-fetching.md',
       content: '# Data Fetching\n\nUse server components for data fetching.',
       lastModified: new Date('2025-01-02'),
     },
     {
       title: 'Auth Module',
       filename: 'auth.md',
+      relativePath: 'context/modules/auth.md',
       content: '# Auth Module\n\n## Key Files\n- `src/auth/index.ts` — main auth logic\n\n## Exports\n- `signIn()` — sign in user\n- `signOut()` — sign out user',
       lastModified: new Date('2025-01-03'),
     },

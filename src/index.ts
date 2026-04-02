@@ -46,6 +46,7 @@ program
   .option('--target <name>', 'Generate specific target only')
   .option('--dry-run', 'Print to stdout, don\'t write files')
   .option('--diff', 'Show diff against current output files')
+  .option('--strict', 'Exit non-zero on token budget exceeded')
   .option('--verbose', 'Show detailed assembly info')
   .action(async (options) => {
     const { generateCommand } = await import('./commands/generate.js');
@@ -85,10 +86,46 @@ program
 
 program
   .command('agents [action] [name]')
-  .description('Browse AI agent personalities (156 bundled from Agency Agents)')
-  .action(async (action, name) => {
+  .description('Browse AI agent personalities (155 bundled from Agency Agents)')
+  .option('--all', 'Show all agents without division grouping')
+  .action(async (action, name, options) => {
     const { agentsCommand } = await import('./commands/agents.js');
-    await agentsCommand(action || 'list', name);
+    await agentsCommand(action || 'list', name, options);
+  });
+
+// ── Learning ─────────────────────────────────────────────────────────
+
+program
+  .command('learn')
+  .description('Extract patterns from recent sessions into instincts')
+  .option('--dry-run', 'Show what would be extracted without saving')
+  .action(async (options) => {
+    const { learnCommand } = await import('./commands/learn.js');
+    await learnCommand(options);
+  });
+
+program
+  .command('evolve')
+  .description('Promote proven instincts into convention updates')
+  .option('--threshold <n>', 'Minimum confidence to promote (0-1)', '0.7')
+  .option('--dry-run', 'Show report without writing changes')
+  .action(async (options) => {
+    const { evolveCommand } = await import('./commands/evolve.js');
+    await evolveCommand({ ...options, threshold: parseFloat(options.threshold) });
+  });
+
+// ── Scan ─────────────────────────────────────────────────────────────
+
+program
+  .command('scan')
+  .description('Analyze codebase — detect stack, generate context modules')
+  .option('--no-ai', 'Skip AI analysis')
+  .option('--suggest-skills', 'Only show skill suggestions')
+  .option('--deep', 'Generate code map (API routes, hooks, services, call graph)')
+  .option('--modules', 'Generate rich feature modules via static analysis (types, functions, components)')
+  .action(async (options) => {
+    const { scanCommand } = await import('./commands/scan.js');
+    await scanCommand(options);
   });
 
 // ── UI ────────────────────────────────────────────────────────────────

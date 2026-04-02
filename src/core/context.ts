@@ -5,8 +5,14 @@ import type { AgentCtxConfig } from './config.js';
 export interface ContextModule {
   title: string;
   filename: string;
+  relativePath: string;
   content: string;
   lastModified: Date;
+}
+
+export interface LoadContextResult {
+  modules: ContextModule[];
+  missing: string[];
 }
 
 function extractTitle(content: string, filename: string): string {
@@ -22,7 +28,16 @@ export async function loadContextModules(
   config: AgentCtxConfig,
   basePath: string,
 ): Promise<ContextModule[]> {
+  const { modules } = await loadContextModulesWithWarnings(config, basePath);
+  return modules;
+}
+
+export async function loadContextModulesWithWarnings(
+  config: AgentCtxConfig,
+  basePath: string,
+): Promise<LoadContextResult> {
   const modules: ContextModule[] = [];
+  const missing: string[] = [];
 
   for (const relativePath of config.context) {
     const fullPath = resolve(basePath, relativePath);
@@ -31,10 +46,9 @@ export async function loadContextModules(
     let content: string;
     try {
       content = await readFile(fullPath, 'utf-8');
-    } catch (err) {
-      throw new Error(
-        `Context file not found: ${relativePath} (resolved to ${fullPath})`,
-      );
+    } catch {
+      missing.push(relativePath);
+      continue;
     }
 
     const fileStat = await stat(fullPath);
@@ -42,10 +56,11 @@ export async function loadContextModules(
     modules.push({
       title: extractTitle(content, filename),
       filename,
+      relativePath: relativePath,
       content,
       lastModified: fileStat.mtime,
     });
   }
 
-  return modules;
+  return { modules, missing };
 }

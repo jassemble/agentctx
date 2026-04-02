@@ -7,6 +7,7 @@ import {
   generateOpenclawSoul, generateOpenclawAgents, generateOpenclawIdentity,
   generateOpencode, generateQwen,
 } from './providers.js';
+import { generateHooks } from './hooks.js';
 import { estimateTokens } from '../utils/tokens.js';
 
 export interface GeneratorResult {
@@ -32,6 +33,7 @@ const generators: Record<string, GeneratorFn> = {
   gemini: generateGemini,
   opencode: generateOpencode,
   qwen: generateQwen,
+  hooks: generateHooks,
 };
 
 // OpenClaw produces 3 files — handled specially

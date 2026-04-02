@@ -1,11 +1,12 @@
 import { loadConfig, type AgentCtxConfig } from './config.js';
-import { loadContextModules, type ContextModule } from './context.js';
+import { loadContextModulesWithWarnings, type ContextModule } from './context.js';
 import { resolve, dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 
 export interface ResolvedConfig {
   config: AgentCtxConfig;
   modules: ContextModule[];
+  missing: string[];
   configPath: string;
   agentctxDir: string;
   projectRoot: string;
@@ -26,10 +27,10 @@ export async function resolveInheritance(
   const agentctxDir = dirname(configPath);
   const projectRoot = dirname(agentctxDir);
   const config = await loadConfig(configPath);
-  const childModules = await loadContextModules(config, agentctxDir);
+  const { modules: childModules, missing: childMissing } = await loadContextModulesWithWarnings(config, agentctxDir);
 
   if (!config.inherit) {
-    return { config, modules: childModules, configPath, agentctxDir, projectRoot };
+    return { config, modules: childModules, missing: childMissing, configPath, agentctxDir, projectRoot };
   }
 
   // Resolve parent path relative to the project root (parent of .agentctx/)
@@ -64,7 +65,7 @@ export async function resolveInheritance(
   const mergedConfig: AgentCtxConfig = {
     ...parent.config,
     ...config,
-    context: mergedModules.map((m) => m.filename),
+    context: mergedModules.map((m) => m.relativePath),
     skills: [...new Set([...(parent.config.skills || []), ...(config.skills || [])])],
   };
 
@@ -83,6 +84,7 @@ export async function resolveInheritance(
   return {
     config: mergedConfig,
     modules: mergedModules,
+    missing: [...parent.missing, ...childMissing],
     configPath,
     agentctxDir,
     projectRoot,

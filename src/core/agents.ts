@@ -138,6 +138,64 @@ export function formatAgentForContext(agent: AgentDefinition): string {
   return agent.content;
 }
 
+// ── Division mapping ─────────────────────────────────────────────────
+
+export interface DivisionInfo {
+  label: string;
+  emoji: string;
+  description: string;
+  categories: string[];
+}
+
+export const DIVISION_MAP: Record<string, DivisionInfo> = {
+  engineering:   { label: 'Engineering',        emoji: '⚙️',  description: 'Backend, frontend, DevOps, security, AI/ML',          categories: ['engineering', 'lsp', 'terminal', 'automation', 'agentic', 'agents'] },
+  design:        { label: 'Design & Creative',  emoji: '🎨', description: 'UI/UX, brand, visual storytelling',                   categories: ['design', 'blender', 'narrative', 'technical'] },
+  marketing:     { label: 'Marketing',          emoji: '📣', description: 'Content, SEO, social media, growth',                  categories: ['marketing'] },
+  sales:         { label: 'Sales & Business',   emoji: '💼', description: 'Sales, accounts, recruiting, supply chain',           categories: ['sales', 'accounts', 'recruitment', 'supply', 'corporate', 'report'] },
+  product:       { label: 'Product & Project',  emoji: '🧭', description: 'Product management, sprints, feedback',               categories: ['product', 'project'] },
+  testing:       { label: 'Testing & Quality',  emoji: '🧪', description: 'QA, accessibility, performance, compliance',          categories: ['testing', 'compliance'] },
+  gamedev:       { label: 'Game Development',   emoji: '🎮', description: 'Unity, Unreal, Godot, Roblox, game design',           categories: ['game', 'unity', 'unreal', 'godot', 'roblox', 'level'] },
+  xr:            { label: 'XR & Spatial',       emoji: '🥽', description: 'VR/AR, visionOS, spatial computing',                  categories: ['xr', 'visionos', 'macos'] },
+  'paid-media':  { label: 'Paid Media',         emoji: '💰', description: 'PPC, programmatic, social ads, tracking',             categories: ['paid'] },
+  specialized:   { label: 'Specialized',        emoji: '🔮', description: 'Academic, healthcare, government, blockchain, support', categories: ['specialized', 'academic', 'blockchain', 'data', 'government', 'healthcare', 'identity', 'study', 'support', 'zk'] },
+};
+
+const categoryToDivision = new Map<string, string>();
+for (const [divKey, info] of Object.entries(DIVISION_MAP)) {
+  for (const cat of info.categories) {
+    categoryToDivision.set(cat, divKey);
+  }
+}
+
+export function getDivisionForCategory(category: string): string {
+  return categoryToDivision.get(category) ?? 'specialized';
+}
+
+export function getAgentsByDivision(agents: AgentDefinition[]): Map<string, AgentDefinition[]> {
+  const grouped = new Map<string, AgentDefinition[]>();
+  for (const divKey of Object.keys(DIVISION_MAP)) {
+    grouped.set(divKey, []);
+  }
+  for (const agent of agents) {
+    const div = getDivisionForCategory(agent.category);
+    const list = grouped.get(div) ?? [];
+    list.push(agent);
+    grouped.set(div, list);
+  }
+  return grouped;
+}
+
+export function listDivisions(agents: AgentDefinition[]): Array<{ key: string; label: string; emoji: string; description: string; count: number }> {
+  const byDiv = getAgentsByDivision(agents);
+  return Object.entries(DIVISION_MAP).map(([key, info]) => ({
+    key,
+    label: info.label,
+    emoji: info.emoji,
+    description: info.description,
+    count: byDiv.get(key)?.length ?? 0,
+  }));
+}
+
 function levenshteinDistance(a: string, b: string): number {
   const m = a.length;
   const n = b.length;

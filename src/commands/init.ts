@@ -380,6 +380,7 @@ async function initWithSkills(
     outputs: {
       claude: { enabled: true, path: 'CLAUDE.md', max_tokens: 8000 },
       cursorrules: { enabled: true, path: '.cursor/rules/agentctx.mdc', max_tokens: 4000 },
+      ...(composed.hooks.length > 0 ? { hooks: { enabled: true, path: '.agentctx/hooks/settings.json' } } : {}),
     },
   };
 
@@ -509,95 +510,93 @@ async function initInteractive(
     // Skills module not available yet, skip
   }
 
-  // Agent personality selection (if not passed via --agent)
+  // Agent personality selection (if not passed via --agent) — two-step: divisions then agents
   if (!options.agent) {
     try {
-      const { listAgents } = await import('../core/agents.js');
+      const { listAgents, listDivisions, getAgentsByDivision } = await import('../core/agents.js');
       const agents = await listAgents();
       if (agents.length > 0) {
-        // Build recommendations based on detected stack and selected skills
-        const recommendedSlugs = new Set<string>();
-        const strongRecommendSlugs = new Set<string>();
-
-        // Always recommend these core agents
-        strongRecommendSlugs.add('senior-developer');
-        strongRecommendSlugs.add('code-reviewer');
-        recommendedSlugs.add('git-workflow-master');
-
-        // Based on language/framework
+        // Build recommended division pre-selections based on stack
         const detectedLang = (typeof language === 'string' ? language : '') || profile?.language || '';
         const detectedFw = (typeof framework === 'string' ? framework : '') || profile?.framework || '';
-
-        if (detectedFw === 'nextjs' || selectedSkills.includes('nextjs')) {
-          strongRecommendSlugs.add('frontend-developer');
-          recommendedSlugs.add('backend-architect');
+        const recommendedDivisions = new Set<string>(['engineering']);
+        if (detectedFw === 'nextjs' || selectedSkills.includes('nextjs') || selectedSkills.includes('design') || selectedSkills.includes('tailwind')) {
+          recommendedDivisions.add('design');
         }
-        if (selectedSkills.includes('design')) {
-          strongRecommendSlugs.add('ui-designer');
-          recommendedSlugs.add('ux-researcher');
-        }
-        if (selectedSkills.includes('tailwind')) {
-          recommendedSlugs.add('frontend-developer');
-        }
-        if (detectedLang === 'python' || selectedSkills.includes('python-fastapi')) {
-          strongRecommendSlugs.add('backend-architect');
-          recommendedSlugs.add('database-optimizer');
-        }
-        if (selectedSkills.includes('typescript')) {
-          recommendedSlugs.add('software-architect');
-        }
-
-        // Full-stack detection
         if (selectedSkills.length >= 3) {
-          recommendedSlugs.add('product-manager');
-          recommendedSlugs.add('evidence-collector');
+          recommendedDivisions.add('product');
         }
+        recommendedDivisions.add('testing');
 
-        // Build options: recommended first (with hints), then top others
-        const recommended = agents.filter(a =>
-          strongRecommendSlugs.has(a.slug) || recommendedSlugs.has(a.slug)
-        );
-        const others = agents.filter(a =>
-          !strongRecommendSlugs.has(a.slug) && !recommendedSlugs.has(a.slug)
-        );
+        // Step 1: Pick divisions
+        const divisions = listDivisions(agents);
+        const divOptions = divisions
+          .filter(d => d.count > 0)
+          .map(d => ({
+            value: d.key,
+            label: `${d.emoji}  ${d.label} (${d.count})`,
+            hint: recommendedDivisions.has(d.key) ? 'recommended' : undefined,
+          }));
 
-        // Pick top relevant others by category
-        const topCategories = ['engineering', 'testing', 'design', 'product'];
-        const topOthers = others
-          .filter(a => topCategories.includes(a.category))
-          .slice(0, 10);
-
-        const allOptions = [
-          ...recommended.map(a => ({
-            value: a.slug,
-            label: `${a.frontmatter.emoji || ''} ${a.frontmatter.name} — ${a.frontmatter.description?.slice(0, 55)}...`,
-            hint: strongRecommendSlugs.has(a.slug) ? 'recommended' : 'suggested',
-          })),
-          ...topOthers.map(a => ({
-            value: a.slug,
-            label: `${a.frontmatter.emoji || ''} ${a.frontmatter.name} — ${a.frontmatter.description?.slice(0, 55)}...`,
-          })),
-        ];
-
-        // Remove duplicates
-        const seen = new Set<string>();
-        const uniqueOptions = allOptions.filter(o => {
-          if (seen.has(o.value)) return false;
-          seen.add(o.value);
-          return true;
-        });
-
-        const agentSelection = await p.multiselect({
-          message: `Choose AI agents (${agents.length} available, showing top picks)`,
-          options: uniqueOptions,
-          initialValues: [...strongRecommendSlugs].filter(s => agents.some(a => a.slug === s)),
+        const divSelection = await p.multiselect({
+          message: 'Which agent areas interest you?',
+          options: divOptions,
+          initialValues: [...recommendedDivisions],
           required: false,
         });
 
-        if (p.isCancel(agentSelection)) { p.cancel('Init cancelled.'); process.exit(0); }
-        const selectedAgents = agentSelection as string[];
-        if (selectedAgents.length > 0) {
-          options.agent = selectedAgents.join(',');
+        if (p.isCancel(divSelection)) { p.cancel('Init cancelled.'); process.exit(0); }
+        const selectedDivisions = divSelection as string[];
+
+        if (selectedDivisions.length > 0) {
+          // Step 2: Pick agents from selected divisions
+          const byDiv = getAgentsByDivision(agents);
+          const divAgents: typeof agents = [];
+          for (const divKey of selectedDivisions) {
+            divAgents.push(...(byDiv.get(divKey) ?? []));
+          }
+
+          // Build smart recommendations for pre-selection
+          const strongRecommendSlugs = new Set<string>();
+          strongRecommendSlugs.add('senior-developer');
+          strongRecommendSlugs.add('code-reviewer');
+          if (detectedFw === 'nextjs' || selectedSkills.includes('nextjs')) {
+            strongRecommendSlugs.add('frontend-developer');
+            strongRecommendSlugs.add('backend-architect');
+          }
+          if (selectedSkills.includes('design')) {
+            strongRecommendSlugs.add('ui-designer');
+          }
+          if (detectedLang === 'python' || selectedSkills.includes('python-fastapi')) {
+            strongRecommendSlugs.add('backend-architect');
+          }
+
+          const agentOptions = divAgents.map(a => ({
+            value: a.slug,
+            label: `${a.frontmatter.emoji || ''} ${a.frontmatter.name} — ${a.frontmatter.description?.slice(0, 50)}...`,
+            hint: strongRecommendSlugs.has(a.slug) ? 'recommended' : undefined,
+          }));
+
+          // Remove duplicates (in case agents appear in multiple divisions)
+          const seen = new Set<string>();
+          const uniqueOptions = agentOptions.filter(o => {
+            if (seen.has(o.value)) return false;
+            seen.add(o.value);
+            return true;
+          });
+
+          const agentSelection = await p.multiselect({
+            message: `Pick agents (${uniqueOptions.length} from selected areas)`,
+            options: uniqueOptions,
+            initialValues: [...strongRecommendSlugs].filter(s => divAgents.some(a => a.slug === s)),
+            required: false,
+          });
+
+          if (p.isCancel(agentSelection)) { p.cancel('Init cancelled.'); process.exit(0); }
+          const selectedAgents = agentSelection as string[];
+          if (selectedAgents.length > 0) {
+            options.agent = selectedAgents.join(',');
+          }
         }
       }
     } catch {
@@ -844,15 +843,37 @@ async function generateOutputs(projectRoot: string, agentctxDir: string): Promis
     const { loadConfig } = await import('../core/config.js');
     const { loadContextModules } = await import('../core/context.js');
     const { runGenerators } = await import('../generators/index.js');
+    const { setHookEntries, getHookScripts } = await import('../generators/hooks.js');
+    const { resolveSkills: resSkills, composeSkills: compSkills } = await import('../core/skills.js');
 
     const loadedConfig = await loadConfig(join(agentctxDir, 'config.yaml'));
     const modules = await loadContextModules(loadedConfig, agentctxDir);
+
+    // Feed hook entries to the hooks generator
+    if (loadedConfig.skills && loadedConfig.skills.length > 0 && loadedConfig.outputs.hooks?.enabled) {
+      try {
+        const resolvedSkills = await resSkills(loadedConfig.skills);
+        const composedSkills = await compSkills(resolvedSkills);
+        setHookEntries(composedSkills.hooks);
+      } catch { /* hooks will be empty */ }
+    }
+
     const results = await runGenerators(modules, loadedConfig);
 
     for (const result of results) {
       const outPath = resolve(projectRoot, result.path);
       await mkdir(dirname(outPath), { recursive: true });
       await writeFile(outPath, result.content, 'utf-8');
+
+      // Write hook scripts alongside hooks settings
+      if (result.name === 'hooks') {
+        const hookScripts = getHookScripts();
+        for (const script of hookScripts) {
+          const scriptPath = resolve(projectRoot, '.agentctx', script.path);
+          await mkdir(dirname(scriptPath), { recursive: true });
+          await writeFile(scriptPath, script.content, 'utf-8');
+        }
+      }
     }
 
     genSpinner.stop('Generated outputs');

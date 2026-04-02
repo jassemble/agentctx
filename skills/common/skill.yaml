@@ -1,0 +1,11 @@
+name: common
+description: "Universal coding rules — security, errors, testing, quality"
+version: 1.0.0
+tags: [rules, universal, security, quality]
+provides: [common-rules, security-rules, quality-rules]
+conflicts: []
+context:
+  - context/security.md
+  - context/error-handling.md
+  - context/testing.md
+  - context/code-quality.md

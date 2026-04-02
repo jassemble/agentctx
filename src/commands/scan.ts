@@ -26,6 +26,8 @@ export interface CodebaseProfile {
 interface ScanOptions {
   ai?: boolean;
   suggestSkills?: boolean;
+  deep?: boolean;
+  modules?: boolean;
 }
 
 interface AiModule {
@@ -403,7 +405,192 @@ export async function scanCommand(options: ScanOptions): Promise<void> {
     return;
   }
 
-  // Phase 2: AI analysis (runs by default, skip with --no-ai)
+  // Phase 2: Deep code map (--deep)
+  if (options.deep) {
+    const agentctxDir = join(projectRoot, '.agentctx');
+    if (!existsSync(agentctxDir)) {
+      logger.warn('No .agentctx/ found. Run `agentctx init` first.');
+      return;
+    }
+
+    const { scanCodeMap, renderCodeMapMarkdown } = await import('../core/code-map.js');
+
+    logger.info('Scanning codebase for API routes, hooks, services...');
+    const codeMap = await scanCodeMap(projectRoot, profile);
+
+    const total = codeMap.apiRoutes.length + codeMap.hooks.length + codeMap.services.length + codeMap.errorBoundaries.length;
+    if (total === 0) {
+      logger.warn('No API routes, hooks, or services detected.');
+      return;
+    }
+
+    const markdown = renderCodeMapMarkdown(codeMap);
+
+    // Write to .agentctx/context/modules/code-map.md
+    const { mkdir } = await import('node:fs/promises');
+    const modulesDir = join(agentctxDir, 'context', 'modules');
+    await mkdir(modulesDir, { recursive: true });
+    const codeMapPath = join(modulesDir, 'code-map.md');
+    await writeFile(codeMapPath, markdown, 'utf-8');
+
+    // Update config.yaml to include the module
+    const configPath = join(agentctxDir, 'config.yaml');
+    if (existsSync(configPath)) {
+      try {
+        const configContent = await readFile(configPath, 'utf-8');
+        const config = parseYaml(configContent) as Record<string, unknown>;
+        const existingContext = (config.context ?? []) as string[];
+        const contextEntry = 'context/modules/code-map.md';
+
+        if (!existingContext.includes(contextEntry)) {
+          existingContext.push(contextEntry);
+          config.context = existingContext;
+          await writeFile(configPath, toYaml(config, { lineWidth: 100 }), 'utf-8');
+          logger.success('Added code-map.md to config.yaml');
+        }
+      } catch (err) {
+        logger.warn(`Could not update config.yaml: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
+    logger.success(`Code map generated: ${codeMap.apiRoutes.length} routes, ${codeMap.hooks.length} hooks, ${codeMap.services.length} services, ${codeMap.errorBoundaries.length} error boundaries`);
+    logger.dim('Run `agentctx generate` to include code map in CLAUDE.md output.');
+    console.log('');
+    return;
+  }
+
+  // Phase 3: Static analysis modules (--modules)
+  if (options.modules) {
+    const agentctxDir = join(projectRoot, '.agentctx');
+    if (!existsSync(agentctxDir)) {
+      logger.warn('No .agentctx/ found. Run `agentctx init` first.');
+      return;
+    }
+
+    const { discoverFeatures } = await import('../core/feature-discovery.js');
+    const { analyzeFile } = await import('../core/ast-analyzer.js');
+    const { assembleModule, assembleRootModule } = await import('../core/module-assembler.js');
+    const { mkdir } = await import('node:fs/promises');
+    const { dirname: pathDirname } = await import('node:path');
+
+    logger.info('Discovering feature boundaries...');
+    const featureMap = await discoverFeatures(projectRoot, profile);
+
+    if (featureMap.features.length === 0 && featureMap.rootFiles.length === 0) {
+      logger.warn('No features detected. Ensure your project has source files in src/, app/, lib/, or components/.');
+      return;
+    }
+
+    logger.info(`Found ${featureMap.features.length} module(s). Analyzing with TypeScript AST...`);
+
+    // Analyze all files
+    const allAnalyses = new Map<string, Awaited<ReturnType<typeof analyzeFile>>>();
+    const allFiles = [
+      ...featureMap.features.flatMap(f => f.files),
+      ...featureMap.rootFiles,
+    ];
+
+    let analyzed = 0;
+    for (const file of allFiles) {
+      try {
+        const analysis = analyzeFile(join(projectRoot, file));
+        allAnalyses.set(file, { ...analysis, filePath: file });
+        analyzed++;
+      } catch {
+        // Skip files that fail to parse
+      }
+    }
+
+    logger.dim(`Analyzed ${analyzed} file(s)`);
+
+    // Generate modules — mirroring source directory structure
+    const modulesDir = join(agentctxDir, 'context', 'modules');
+
+    const writtenModules: string[] = [];
+    const allAnalysesArray = Array.from(allAnalyses.values());
+
+    let totalTypes = 0;
+    let totalFunctions = 0;
+    let totalComponents = 0;
+
+    for (const feature of featureMap.features) {
+      const featureAnalyses = feature.files
+        .map(f => allAnalyses.get(f))
+        .filter((a): a is NonNullable<typeof a> => a !== undefined);
+
+      if (featureAnalyses.length === 0) continue;
+
+      const markdown = assembleModule(
+        feature,
+        featureAnalyses,
+        featureMap.features,
+        allAnalysesArray,
+        projectRoot,
+      );
+
+      // Mirror source directory: components/theme → modules/components/theme.md
+      const moduleFile = `${feature.modulePath}.md`;
+      const fullPath = join(modulesDir, moduleFile);
+      await mkdir(pathDirname(fullPath), { recursive: true });
+      await writeFile(fullPath, markdown, 'utf-8');
+      writtenModules.push(`context/modules/${moduleFile}`);
+
+      totalTypes += featureAnalyses.flatMap(a => a.types).filter(t => t.exported).length;
+      totalFunctions += featureAnalyses.flatMap(a => a.functions).filter(f => f.exported).length;
+      totalComponents += featureAnalyses.flatMap(a => a.components).length;
+
+      logger.success(`Module: ${feature.modulePath} (${feature.files.length} files)`);
+    }
+
+    // Generate root module for files at source roots (app/layout.tsx, app/page.tsx)
+    if (featureMap.rootFiles.length > 0) {
+      const rootMarkdown = assembleRootModule(
+        featureMap.rootFiles,
+        allAnalysesArray,
+        projectRoot,
+      );
+      if (rootMarkdown) {
+        const rootPath = join(modulesDir, '_root.md');
+        await mkdir(pathDirname(rootPath), { recursive: true });
+        await writeFile(rootPath, rootMarkdown, 'utf-8');
+        writtenModules.push('context/modules/_root.md');
+        logger.success(`Module: _root (${featureMap.rootFiles.length} files)`);
+      }
+    }
+
+    // Update config.yaml
+    const configPath = join(agentctxDir, 'config.yaml');
+    if (existsSync(configPath)) {
+      try {
+        const configContent = await readFile(configPath, 'utf-8');
+        const config = parseYaml(configContent) as Record<string, unknown>;
+        const existingContext = (config.context ?? []) as string[];
+
+        let added = 0;
+        for (const mod of writtenModules) {
+          if (!existingContext.includes(mod)) {
+            existingContext.push(mod);
+            added++;
+          }
+        }
+        if (added > 0) {
+          config.context = existingContext;
+          await writeFile(configPath, toYaml(config, { lineWidth: 100 }), 'utf-8');
+          logger.success(`Added ${added} module(s) to config.yaml`);
+        }
+      } catch (err) {
+        logger.warn(`Could not update config.yaml: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
+    console.log('');
+    logger.info(`Summary: ${writtenModules.length} modules — ${totalTypes} types, ${totalFunctions} functions, ${totalComponents} components`);
+    logger.dim('Run `agentctx generate` to update CLAUDE.md with the new modules.');
+    console.log('');
+    return;
+  }
+
+  // Phase 4: AI analysis (runs by default, skip with --no-ai)
   if (options.ai === false) {
     logger.dim('AI analysis skipped (--no-ai)');
     return;

@@ -5,6 +5,8 @@ import { createTwoFilesPatch } from 'diff';
 import { findConfigPath } from '../core/config.js';
 import { resolveInheritance } from '../core/inheritance.js';
 import { runGenerators } from '../generators/index.js';
+import { setHookEntries, getHookScripts } from '../generators/hooks.js';
+import { resolveSkills, composeSkills } from '../core/skills.js';
 import { logger } from '../utils/logger.js';
 
 export async function generateCommand(options: {
@@ -21,8 +23,15 @@ export async function generateCommand(options: {
   }
 
   const resolved = await resolveInheritance(configPath);
-  const { config, modules, projectRoot } = resolved;
+  const { config, modules, missing, projectRoot } = resolved;
   const agentctxDir = resolved.agentctxDir;
+
+  if (missing.length > 0) {
+    for (const path of missing) {
+      logger.warn(`Context file not found, skipping: ${path}`);
+    }
+    logger.warn('Remove missing entries from config.yaml or create the files.');
+  }
 
   if (options.verbose) {
     logger.dim(`Config: ${configPath}`);
@@ -31,6 +40,17 @@ export async function generateCommand(options: {
 
   if (options.verbose) {
     logger.dim(`Loaded ${modules.length} context module(s)`);
+  }
+
+  // Resolve skill hooks for the hooks generator
+  if (config.skills && config.skills.length > 0 && config.outputs.hooks?.enabled) {
+    try {
+      const resolved = await resolveSkills(config.skills);
+      const composed = await composeSkills(resolved);
+      setHookEntries(composed.hooks);
+    } catch {
+      // Skills may not resolve in all contexts — hooks output will be empty
+    }
   }
 
   let results = await runGenerators(modules, config);
@@ -79,6 +99,22 @@ export async function generateCommand(options: {
     }
     await writeFile(outputPath, result.content, 'utf-8');
     logger.success(`Wrote ${result.path}`);
+
+    // For hooks target, also write hook script files
+    if (result.name === 'hooks') {
+      const hookScripts = getHookScripts();
+      for (const script of hookScripts) {
+        const scriptPath = resolve(projectRoot, '.agentctx', script.path);
+        const scriptDir = dirname(scriptPath);
+        if (!existsSync(scriptDir)) {
+          await mkdir(scriptDir, { recursive: true });
+        }
+        await writeFile(scriptPath, script.content, 'utf-8');
+      }
+      if (hookScripts.length > 0) {
+        logger.success(`Wrote ${hookScripts.length} hook scripts to .agentctx/hooks/`);
+      }
+    }
   }
 
   // Print summary

@@ -22,6 +22,12 @@ export const SkillYamlSchema = z.object({
     src: z.string(),
     dest: z.string(),
   })).default([]),
+  hooks: z.array(z.object({
+    src: z.string(),
+    event: z.string(),
+    matcher: z.string().optional(),
+    timeout: z.number().default(5000),
+  })).default([]),
 });
 
 export type SkillYaml = z.infer<typeof SkillYamlSchema>;
@@ -91,6 +97,11 @@ export async function resolveSkill(name: string, builtinOverride?: string): Prom
 }
 
 export async function resolveSkills(names: string[], builtinOverride?: string): Promise<ResolvedSkill[]> {
+  // Auto-include common rules if not already present and at least one skill is requested
+  if (names.length > 0 && !names.includes('common')) {
+    names = ['common', ...names];
+  }
+
   const skills = await Promise.all(names.map((n) => resolveSkill(n, builtinOverride)));
 
   // Check for conflicts
@@ -173,6 +184,15 @@ export async function loadSkillModules(skill: ResolvedSkill): Promise<SkillModul
   return modules;
 }
 
+export interface HookEntry {
+  event: string;
+  matcher?: string;
+  timeout: number;
+  scriptPath: string;
+  content: string;
+  skill: string;
+}
+
 export async function composeSkills(
   skills: ResolvedSkill[],
 ): Promise<{
@@ -180,12 +200,14 @@ export async function composeSkills(
   referenceFiles: Array<{ relativePath: string; content: string }>;
   commands: Array<{ relativePath: string; content: string }>;
   scaffolds: Array<{ dest: string; content: string }>;
+  hooks: HookEntry[];
   skillNames: string[];
 }> {
   const conventionMap = new Map<string, { relativePath: string; content: string }>();
   const referenceMap = new Map<string, { relativePath: string; content: string }>();
   const commands: Array<{ relativePath: string; content: string }> = [];
   const scaffolds: Array<{ dest: string; content: string }> = [];
+  const hooks: HookEntry[] = [];
 
   for (const skill of skills) {
     const skillName = skill.yaml.name;
@@ -265,6 +287,27 @@ export async function composeSkills(
       }
       scaffolds.push({ dest: scaffold.dest, content });
     }
+
+    // Load hook scripts
+    for (const hook of skill.yaml.hooks) {
+      const fullPath = resolve(skill.dir, hook.src);
+      let content: string;
+      try {
+        content = await readFile(fullPath, 'utf-8');
+      } catch {
+        throw new Error(
+          `Skill hook file not found: ${hook.src} in skill "${skill.yaml.name}" (resolved to ${fullPath})`,
+        );
+      }
+      hooks.push({
+        event: hook.event,
+        matcher: hook.matcher,
+        timeout: hook.timeout,
+        scriptPath: `hooks/${basename(hook.src)}`,
+        content,
+        skill: skill.yaml.name,
+      });
+    }
   }
 
   return {
@@ -272,6 +315,7 @@ export async function composeSkills(
     referenceFiles: Array.from(referenceMap.values()),
     commands,
     scaffolds,
+    hooks,
     skillNames: skills.map((s) => s.yaml.name),
   };
 }

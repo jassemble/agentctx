@@ -1,0 +1,10 @@
+name: common
+description: Common rules shared across all skills
+version: "1.0.0"
+tags:
+  - common
+provides:
+  - common-rules
+conflicts: []
+context:
+  - context/common-rules.md

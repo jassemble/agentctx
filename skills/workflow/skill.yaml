@@ -25,6 +25,24 @@ commands:
   - commands/project-status.md
   - commands/rfp.md
   - commands/orchestrate.md
+hooks:
+  - src: hooks/session-start.js
+    event: SessionStart
+    timeout: 5000
+  - src: hooks/session-end.js
+    event: Stop
+    timeout: 10000
+  - src: hooks/config-protection.js
+    event: PreToolUse
+    matcher: Write
+    timeout: 500
+  - src: hooks/commit-quality.js
+    event: PreToolUse
+    matcher: Bash
+    timeout: 3000
+  - src: hooks/observe.js
+    event: PostToolUse
+    timeout: 2000
 scaffolds:
   - src: scaffolds/INDEX.md
     dest: .agentctx/specs/INDEX.md

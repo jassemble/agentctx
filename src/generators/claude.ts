@@ -76,6 +76,22 @@ function extractKeyFiles(content: string): string[] {
   return files.slice(0, 5);
 }
 
+function extractTypes(content: string): string[] {
+  const types: string[] = [];
+  const lines = content.split('\n');
+  let inTypes = false;
+  for (const line of lines) {
+    if (/^##\s+types/i.test(line)) { inTypes = true; continue; }
+    if (/^##\s+/i.test(line) && inTypes) break;
+    if (inTypes && line.startsWith('- ')) {
+      // Extract type name from signature: `interface User { ... }` or `export interface User { ... }` → "User"
+      const match = line.match(/^-\s+`(?:export\s+)?(?:interface|type|enum)\s+(\w+)/);
+      if (match) types.push(match[1]);
+    }
+  }
+  return types.slice(0, 3);
+}
+
 export function generateClaude(
   modules: ContextModule[],
   config: AgentCtxConfig,
@@ -164,6 +180,16 @@ export function generateClaude(
   if (lang === 'python') {
     parts.push('| Python code | `conventions/python-fastapi/` | relevant `modules/*.md` |');
   }
+  // Add common rules routing if common skill is installed
+  if (conventionDirs.has('common')) {
+    parts.push('| Security concerns | `conventions/common/security.md` | relevant language convention |');
+    parts.push('| Error handling | `conventions/common/error-handling.md` | `conventions/typescript/error-handling.md` |');
+    parts.push('| Writing tests | `conventions/common/testing.md` | relevant language convention |');
+  }
+  // Add debugging row if code-map module exists
+  if (config.context.some(p => basename(p) === 'code-map.md')) {
+    parts.push('| Debugging / tracing bugs | `modules/code-map.md` (routes, hooks, call graph) | relevant `modules/*.md` |');
+  }
   parts.push('| New feature area | `modules/*.md` (check what exists) | `architecture.md`, `decisions.md` |');
   parts.push('| Starting a session | `status.md` (what happened last) | Module Index below |');
   parts.push('');
@@ -217,6 +243,7 @@ export function generateClaude(
     for (const mod of featureModules) {
       const keyFiles = extractKeyFiles(mod.content);
       const exports = extractExports(mod.content);
+      const types = extractTypes(mod.content);
 
       const configPath = config.context.find(p => basename(p) === mod.filename && p.includes('modules/'));
       const displayPath = configPath ? `.agentctx/${configPath}` : `.agentctx/context/modules/${mod.filename}`;
@@ -224,6 +251,9 @@ export function generateClaude(
       let line = `- **${mod.title}** (\`${displayPath}\`)`;
       if (keyFiles.length > 0) {
         line += ` — ${keyFiles.slice(0, 3).map(f => `\`${f}\``).join(', ')}`;
+      }
+      if (types.length > 0) {
+        line += ` | Types: ${types.map(t => `\`${t}\``).join(', ')}`;
       }
       if (exports.length > 0) {
         line += ` | Exports: ${exports.map(e => `\`${e}\``).join(', ')}`;

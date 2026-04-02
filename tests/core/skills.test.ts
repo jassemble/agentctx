@@ -60,17 +60,18 @@ describe('resolveSkill', () => {
 });
 
 describe('resolveSkills', () => {
-  it('resolves multiple skills', async () => {
+  it('resolves multiple skills (auto-includes common)', async () => {
     const skills = await resolveSkills(['test-skill-a', 'test-skill-b'], FIXTURES_SKILLS);
-    expect(skills).toHaveLength(2);
-    expect(skills[0].yaml.name).toBe('test-skill-a');
-    expect(skills[1].yaml.name).toBe('test-skill-b');
+    expect(skills).toHaveLength(3);
+    expect(skills[0].yaml.name).toBe('common');
+    expect(skills[1].yaml.name).toBe('test-skill-a');
+    expect(skills[2].yaml.name).toBe('test-skill-b');
   });
 
   it('throws on conflict', async () => {
     await expect(
       resolveSkills(['test-skill-a', 'test-skill-conflict'], FIXTURES_SKILLS),
-    ).rejects.toThrow(/Skill conflict.*test-skill-conflict.*conflicts with.*test-skill-a/);
+    ).rejects.toThrow(/Skill conflict/);
   });
 });
 

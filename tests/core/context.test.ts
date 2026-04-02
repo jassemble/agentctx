@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { resolve, join } from 'node:path';
-import { loadContextModules, type ContextModule } from '../../src/core/context';
+import { loadContextModules, loadContextModulesWithWarnings, type ContextModule } from '../../src/core/context';
 import type { AgentCtxConfig } from '../../src/core/config';
 
 const FIXTURES = resolve(__dirname, '../fixtures');
@@ -55,12 +55,13 @@ describe('loadContextModules', () => {
     expect(modules[0].lastModified).toBeInstanceOf(Date);
   });
 
-  it('throws clear error for missing file', async () => {
-    const config = makeConfig(['context/nonexistent.md']);
+  it('skips missing files and reports them', async () => {
+    const config = makeConfig(['context/nonexistent.md', 'context/principles.md']);
+    const { modules, missing } = await loadContextModulesWithWarnings(config, BASE_PATH);
 
-    await expect(loadContextModules(config, BASE_PATH)).rejects.toThrow(
-      /Context file not found: context\/nonexistent\.md/,
-    );
+    expect(missing).toEqual(['context/nonexistent.md']);
+    expect(modules).toHaveLength(1);
+    expect(modules[0].filename).toBe('principles.md');
   });
 
   it('falls back to capitalized filename when no heading', async () => {

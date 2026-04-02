@@ -48,12 +48,14 @@ function makeModules(): ContextModule[] {
     {
       title: 'Principles',
       filename: 'principles.md',
+      relativePath: 'context/principles.md',
       content: '# Principles\n\n## Code Quality\n- Write clean, readable code\n- Follow SOLID principles\n- Prefer composition over inheritance\n\n## Testing\n- All public APIs must have tests\n- Aim for >80% coverage\n',
       lastModified: new Date('2025-01-01'),
     },
     {
       title: 'Testing',
       filename: 'testing.md',
+      relativePath: 'context/testing.md',
       content: '# Testing\n\n## Strategy\n- Unit tests for business logic\n- Integration tests for API endpoints\n- E2E tests for critical user flows\n\n## Tools\n- Vitest for unit/integration tests\n- Playwright for E2E tests\n',
       lastModified: new Date('2025-01-02'),
     },
