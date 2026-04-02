@@ -135,7 +135,7 @@ export async function doctorCommand(): Promise<void> {
     recommendations.push({
       type: 'warn',
       message: 'modules/ is empty — AI cannot discover existing code',
-      hint: 'Run: /refresh-context or agentctx generate',
+      hint: 'Run: /agentctx-sync or agentctx generate',
     });
   }
 
@@ -195,7 +195,7 @@ export async function doctorCommand(): Promise<void> {
       recommendations.push({
         type: 'warn',
         message: `Context last refreshed ${daysSince} days ago`,
-        hint: 'Run: /refresh-context or agentctx generate',
+        hint: 'Run: /agentctx-sync or agentctx generate',
       });
     }
   }

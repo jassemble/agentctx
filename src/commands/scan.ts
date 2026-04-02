@@ -27,7 +27,7 @@ interface ScanOptions {
   ai?: boolean;
   suggestSkills?: boolean;
   deep?: boolean;
-  modules?: boolean;
+  modules?: boolean; // default true, --no-modules to skip
 }
 
 interface AiModule {
@@ -459,8 +459,8 @@ export async function scanCommand(options: ScanOptions): Promise<void> {
     return;
   }
 
-  // Phase 3: Static analysis modules (--modules)
-  if (options.modules) {
+  // Phase 3: Static analysis modules (runs by default, skip with --no-modules)
+  if (options.modules !== false) {
     const agentctxDir = join(projectRoot, '.agentctx');
     if (!existsSync(agentctxDir)) {
       logger.warn('No .agentctx/ found. Run `agentctx init` first.');
@@ -585,14 +585,11 @@ export async function scanCommand(options: ScanOptions): Promise<void> {
 
     console.log('');
     logger.info(`Summary: ${writtenModules.length} modules — ${totalTypes} types, ${totalFunctions} functions, ${totalComponents} components`);
-    logger.dim('Run `agentctx generate` to update CLAUDE.md with the new modules.');
     console.log('');
-    return;
   }
 
-  // Phase 4: AI analysis (runs by default, skip with --no-ai)
-  if (options.ai === false) {
-    logger.dim('AI analysis skipped (--no-ai)');
+  // Phase 4: AI analysis (opt-in with --ai)
+  if (!options.ai) {
     return;
   }
 

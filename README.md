@@ -35,23 +35,37 @@ That single command gives you:
 ## Quick Start
 
 ```bash
-# Install
+# 1. Install
 npm install -g agentctx
 
-# Initialize with skills for your stack
+# 2. Initialize with skills for your stack
 agentctx init nextjs typescript tailwind
 
-# Add a design system and workflow engine
-agentctx add design workflow
+# 3. Scan your codebase (generates module files via AST analysis)
+agentctx scan
 
-# Add an AI specialist agent
-agentctx add frontend-developer
-
-# Generate output for all your AI tools
+# 4. Generate output for all your AI tools (CLAUDE.md, .cursorrules, etc.)
 agentctx generate
 
-# Open the live dashboard
-agentctx dashboard
+# 5. In Claude Code, enrich modules with behavior summaries
+/agentctx-sync
+```
+
+### Everyday Commands
+
+```bash
+agentctx scan              # Re-scan after code changes (AST + tech stack detection)
+agentctx generate          # Rebuild output files from context
+agentctx doctor            # Health check — are modules stale? missing context?
+agentctx dashboard         # Open live project dashboard
+```
+
+### Expand Your Setup
+
+```bash
+agentctx add design workflow       # Add skills
+agentctx add frontend-developer    # Add AI agent personality
+agentctx lint --ai                 # AI-powered context quality check
 ```
 
 ### What gets created
@@ -146,7 +160,7 @@ agentctx generate --diff
 | `agentctx lint [--ai]` | Validate context quality (schema, refs, tokens, drift) |
 | `agentctx test [--ci]` | Test convention compliance via promptfoo |
 | `agentctx doctor` | Health check — stack detection, recommendations, score |
-| `agentctx scan` | Analyze codebase — detect language, framework, tools |
+| `agentctx scan` | Analyze codebase — AST module generation + tech stack detection |
 
 ### Agents & Dashboard
 
@@ -164,6 +178,13 @@ agentctx generate --diff
 agentctx init nextjs typescript --agent backend-architect
 agentctx init --force              # Overwrite existing
 agentctx init --app apps/web       # Monorepo app
+
+# Scan
+agentctx scan                      # AST modules + tech stack (default)
+agentctx scan --ai                 # Also run AI analysis (architecture, patterns, style)
+agentctx scan --no-modules         # Skip AST module generation
+agentctx scan --deep               # Generate code map (routes, hooks, services)
+agentctx scan --suggest-skills     # Just show skill recommendations
 
 # Generate
 agentctx generate --target claude  # Specific target only
@@ -339,7 +360,7 @@ Status lives in YAML frontmatter. Filenames never change. Every transition is re
 | `/qa-review` | QA validation checklist |
 | `/deploy-check` | Deployment readiness check |
 | `/project-status` | Show project health overview |
-| `/refresh-context` | Update module documentation |
+| `/agentctx-sync` | Bootstrap or sync context — AST scan + AI enrichment + generate |
 | `/new-module` | Document a new module |
 | `/orchestrate` | Coordinate complex multi-phase features |
 

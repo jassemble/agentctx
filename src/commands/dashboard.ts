@@ -2416,7 +2416,7 @@ async function handleAPIRequest(
   if (url.pathname === '/api/sync' && req.method === 'POST') {
     try {
       const { spawn } = await import('node:child_process');
-      const child = spawn('npx', ['agentctx', 'sync', '--no-ai'], {
+      const child = spawn('npx', ['agentctx', 'scan'], {
         cwd: projectRoot,
         detached: true,
         stdio: 'ignore',

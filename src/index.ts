@@ -119,10 +119,10 @@ program
 program
   .command('scan')
   .description('Analyze codebase — detect stack, generate context modules')
-  .option('--no-ai', 'Skip AI analysis')
+  .option('--ai', 'Run AI analysis (architecture, patterns, style modules via Claude CLI)')
   .option('--suggest-skills', 'Only show skill suggestions')
   .option('--deep', 'Generate code map (API routes, hooks, services, call graph)')
-  .option('--modules', 'Generate rich feature modules via static analysis (types, functions, components)')
+  .option('--no-modules', 'Skip static analysis module generation')
   .action(async (options) => {
     const { scanCommand } = await import('./commands/scan.js');
     await scanCommand(options);

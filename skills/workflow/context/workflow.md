@@ -27,7 +27,7 @@ All feature work follows a spec-first approach. Never implement without a spec.
 5. **Implement** (single-team): Use `/implement` to build from an approved spec
 6. **Build with team**: Use `/build-with-team` for coordinated multi-agent implementation
 7. **Review**: Use `/review` to validate against spec criteria
-8. **Update context**: Use `/refresh-context` to update module documentation
+8. **Update context**: Use `/agentctx-sync` to update module documentation
 
 ### Spec Lifecycle
 

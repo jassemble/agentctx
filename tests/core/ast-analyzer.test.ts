@@ -151,5 +151,61 @@ export const API_URL = 'https://example.com';
     expect(result.exports).toHaveLength(0);
     expect(result.functions).toHaveLength(0);
     expect(result.types).toHaveLength(0);
+    expect(result.directives).toHaveLength(0);
+  });
+
+  it('detects "use server" directive', () => {
+    const result = analyzeFile('actions.ts', `
+"use server";
+
+import { redirect } from "next/navigation";
+
+export async function loginAction(formData: FormData): Promise<void> {
+  redirect("/");
+}
+    `);
+
+    expect(result.directives).toContain('use server');
+    expect(result.functions).toHaveLength(1);
+  });
+
+  it('detects "use client" directive', () => {
+    const result = analyzeFile('form.tsx', `
+"use client";
+
+import { useState } from "react";
+
+export function Form() {
+  const [val, setVal] = useState('');
+  return <input />;
+}
+    `);
+
+    expect(result.directives).toContain('use client');
+  });
+
+  it('detects "server-only" import directive', () => {
+    const result = analyzeFile('auth.ts', `
+import "server-only";
+
+export function getSession(): string | null {
+  return null;
+}
+    `);
+
+    expect(result.directives).toContain('server-only');
+  });
+
+  it('detects multiple directives', () => {
+    const result = analyzeFile('test.ts', `
+"use server";
+import "server-only";
+
+export function action(): void {}
+    `);
+
+    expect(result.directives).toHaveLength(2);
+    expect(result.directives).toContain('use server');
+    expect(result.directives).toContain('server-only');
   });
 });

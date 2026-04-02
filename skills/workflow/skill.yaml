@@ -16,7 +16,7 @@ commands:
   - commands/checkpoint.md
   - commands/rollback.md
   - commands/build-with-team.md
-  - commands/refresh-context.md
+  - commands/agentctx-sync.md
   - commands/test.md
   - commands/test-plan.md
   - commands/qa-review.md

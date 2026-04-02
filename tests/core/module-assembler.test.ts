@@ -16,6 +16,7 @@ function makeFeature(overrides?: Partial<FeatureBoundary>): FeatureBoundary {
 function makeAnalysis(overrides?: Partial<FileAnalysis>): FileAnalysis {
   return {
     filePath: 'src/auth/index.ts',
+    directives: [],
     exports: [
       { name: 'signIn', kind: 'function' },
       { name: 'signOut', kind: 'function' },
@@ -49,6 +50,7 @@ function makeAnalysis(overrides?: Partial<FileAnalysis>): FileAnalysis {
 function makeTypeAnalysis(): FileAnalysis {
   return {
     filePath: 'src/auth/types.ts',
+    directives: [],
     exports: [
       { name: 'User', kind: 'interface' },
       { name: 'Role', kind: 'type' },
@@ -134,6 +136,7 @@ describe('assembleModule', () => {
     const feature = makeFeature({ name: 'ui', modulePath: 'src/ui', files: ['src/ui/button.tsx'] });
     const analyses: FileAnalysis[] = [{
       filePath: 'src/ui/button.tsx',
+      directives: ['use client'],
       exports: [{ name: 'Button', kind: 'component' }],
       imports: [],
       types: [],
@@ -151,6 +154,37 @@ describe('assembleModule', () => {
     expect(markdown).toContain('## Components');
     expect(markdown).toContain('<Button');
     expect(markdown).toContain('hooks: useState');
+    // Directive should appear in Key Files
+    expect(markdown).toContain('[use client]');
+  });
+
+  it('shows framework directives in Key Files section', () => {
+    const feature = makeFeature({
+      name: 'actions',
+      modulePath: 'app/actions',
+      files: ['app/actions/auth.ts'],
+    });
+    const analyses: FileAnalysis[] = [{
+      filePath: 'app/actions/auth.ts',
+      directives: ['use server'],
+      exports: [{ name: 'loginAction', kind: 'function' }],
+      imports: [],
+      types: [],
+      functions: [{
+        name: 'loginAction',
+        params: '(formData: FormData)',
+        returnType: 'Promise<void>',
+        isAsync: true,
+        exported: true,
+      }],
+      components: [],
+      hooks: [],
+    }];
+
+    const markdown = assembleModule(feature, analyses, [feature], analyses, process.cwd());
+
+    expect(markdown).toContain('[use server]');
+    expect(markdown).toContain('`app/actions/auth.ts` [use server]');
   });
 });
 

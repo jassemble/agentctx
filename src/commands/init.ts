@@ -406,7 +406,7 @@ async function initWithSkills(
 
   logger.dim('\nComplete setup in your AI tool:\n');
   logger.dim('  Claude Code:');
-  logger.dim('    Run /refresh-context to generate module docs from your codebase\n');
+  logger.dim('    Run /agentctx-sync to generate module docs from your codebase\n');
   logger.dim('  Cursor:');
   logger.dim('    Ask: "Read .agentctx/context/ and update architecture.md and modules/"\n');
   logger.dim('  Other tools:');
@@ -819,7 +819,7 @@ async function initInteractive(
 
   logger.dim('\nComplete setup in your AI tool:\n');
   logger.dim('  Claude Code:');
-  logger.dim('    Run /refresh-context to generate module docs from your codebase\n');
+  logger.dim('    Run /agentctx-sync to generate module docs from your codebase\n');
   logger.dim('  Cursor:');
   logger.dim('    Ask: "Read .agentctx/context/ and update architecture.md and modules/"\n');
   logger.dim('  Other tools:');

@@ -6,6 +6,7 @@ import { basename } from 'node:path';
 
 export interface FileAnalysis {
   filePath: string;
+  directives: string[];
   exports: ExportedSymbol[];
   imports: ImportDecl[];
   types: TypeDecl[];
@@ -163,6 +164,7 @@ export function analyzeFile(filePath: string, content?: string): FileAnalysis {
 
   const result: FileAnalysis = {
     filePath,
+    directives: [],
     exports: [],
     imports: [],
     types: [],
@@ -171,13 +173,31 @@ export function analyzeFile(filePath: string, content?: string): FileAnalysis {
     hooks: [],
   };
 
+  // ── Detect framework directives ──
+  // "use server", "use client" are expression statements with string literals at top of file
+  // import "server-only" is a side-effect import
+  const KNOWN_DIRECTIVES = new Set(['use server', 'use client']);
+
   // Build import map for hook source resolution
   const importMap = new Map<string, string>();
 
   ts.forEachChild(sf, (node) => {
+    // ── Directives ──
+    if (ts.isExpressionStatement(node) && ts.isStringLiteral(node.expression)) {
+      const text = node.expression.text;
+      if (KNOWN_DIRECTIVES.has(text)) {
+        result.directives.push(text);
+      }
+      return;
+    }
+
     // ── Imports ──
     if (ts.isImportDeclaration(node)) {
       const moduleSpec = (node.moduleSpecifier as ts.StringLiteral).text;
+      // Detect side-effect imports that act as directives (e.g., import "server-only")
+      if (!node.importClause && (moduleSpec === 'server-only' || moduleSpec === 'client-only')) {
+        result.directives.push(moduleSpec);
+      }
       const isTypeOnly = node.importClause?.isTypeOnly ?? false;
       const symbols: string[] = [];
 

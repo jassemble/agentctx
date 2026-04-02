@@ -180,7 +180,12 @@ export function assembleModule(
     const desc = exportCount > 0
       ? analysis!.exports.slice(0, 3).map(e => e.name).join(', ')
       : '';
-    lines.push(`- \`${f}\`${desc ? ` — ${desc}` : ''}`);
+    // Show framework directives as tags
+    const directives = analysis?.directives ?? [];
+    const directiveTag = directives.length > 0
+      ? ` ${directives.map(d => `[${d}]`).join(' ')}`
+      : '';
+    lines.push(`- \`${f}\`${directiveTag}${desc ? ` — ${desc}` : ''}`);
   }
   if (feature.files.length > opts.maxKeyFiles) {
     lines.push(`> ${feature.files.length - opts.maxKeyFiles} more files in this feature`);
