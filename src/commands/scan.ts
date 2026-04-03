@@ -178,21 +178,37 @@ export function analyzeCodebase(projectRoot: string): CodebaseProfile {
 
 // ── Skill suggestion mapping ───────────────────────────────────────────
 
-function suggestSkillNames(profile: CodebaseProfile): string[] {
-  const skills: string[] = [];
+function suggestSkillNames(
+  profile: CodebaseProfile,
+  wsProfiles?: Map<string, CodebaseProfile>,
+  wsPackages?: WorkspacePackage[],
+): string[] {
+  const skills = new Set<string>();
 
-  if (profile.framework === 'nextjs') skills.push('nextjs');
-  if (profile.language === 'typescript') skills.push('typescript');
-  if (profile.framework === 'fastapi') skills.push('python-fastapi');
+  // Check root profile
+  addSkillsFromProfile(skills, profile, process.cwd());
 
-  // Check for tailwind
-  const pkgPath = join(process.cwd(), 'package.json');
-  if (existsSync(pkgPath)) {
-    const pkg = readJsonSafe(pkgPath);
-    if (pkg && hasDep(pkg, 'tailwindcss')) skills.push('tailwind');
+  // Check workspace profiles
+  if (wsProfiles && wsPackages) {
+    for (const ws of wsPackages) {
+      const wsProfile = wsProfiles.get(ws.name);
+      if (wsProfile) addSkillsFromProfile(skills, wsProfile, ws.directory);
+    }
   }
 
-  return skills;
+  return Array.from(skills);
+}
+
+function addSkillsFromProfile(skills: Set<string>, profile: CodebaseProfile, dir: string): void {
+  if (profile.framework === 'nextjs') skills.add('nextjs');
+  if (profile.language === 'typescript') skills.add('typescript');
+  if (profile.framework === 'fastapi') skills.add('python-fastapi');
+
+  const pkgPath = join(dir, 'package.json');
+  if (existsSync(pkgPath)) {
+    const pkg = readJsonSafe(pkgPath);
+    if (pkg && hasDep(pkg, 'tailwindcss')) skills.add('tailwind');
+  }
 }
 
 function printProfile(profile: CodebaseProfile): void {
@@ -422,7 +438,7 @@ export async function scanCommand(options: ScanOptions): Promise<void> {
     }
   }
 
-  const suggestedSkills = suggestSkillNames(profile);
+  const suggestedSkills = suggestSkillNames(profile, workspaceProfiles, workspaces);
 
   if (suggestedSkills.length > 0) {
     const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
