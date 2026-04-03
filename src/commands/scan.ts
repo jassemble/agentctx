@@ -6,6 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { logger } from '../utils/logger.js';
 import { spawnWithStdin } from '../utils/exec.js';
+import { resolveWorkspaces, type WorkspacePackage } from '../core/detector.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -391,6 +392,36 @@ export async function scanCommand(options: ScanOptions): Promise<void> {
   const profile = analyzeCodebase(projectRoot);
   printProfile(profile);
 
+  // Resolve workspaces for monorepos
+  let workspaces: WorkspacePackage[] = [];
+  const workspaceProfiles = new Map<string, CodebaseProfile>();
+
+  if (profile.isMonorepo) {
+    workspaces = resolveWorkspaces(projectRoot);
+
+    if (workspaces.length > 0) {
+      const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
+      const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
+
+      // Per-workspace profiling
+      for (const ws of workspaces) {
+        workspaceProfiles.set(ws.name, analyzeCodebase(ws.directory));
+      }
+
+      console.log(`  Workspaces (${workspaces.length}):`);
+      for (const ws of workspaces) {
+        const wsProfile = workspaceProfiles.get(ws.name)!;
+        const parts: string[] = [];
+        if (wsProfile.framework) parts.push(wsProfile.framework);
+        else if (wsProfile.language) parts.push(wsProfile.language);
+        if (wsProfile.orm) parts.push(wsProfile.orm);
+        const stack = parts.join(' + ') || 'unknown';
+        console.log(`    ${dim(ws.relativePath + ':')}  ${cyan(stack)}`);
+      }
+      console.log('');
+    }
+  }
+
   const suggestedSkills = suggestSkillNames(profile);
 
   if (suggestedSkills.length > 0) {
@@ -474,7 +505,7 @@ export async function scanCommand(options: ScanOptions): Promise<void> {
     const { dirname: pathDirname } = await import('node:path');
 
     logger.info('Discovering feature boundaries...');
-    const featureMap = await discoverFeatures(projectRoot, profile);
+    const featureMap = await discoverFeatures(projectRoot, profile, workspaces);
 
     if (featureMap.features.length === 0 && featureMap.rootFiles.length === 0) {
       logger.warn('No features detected. Ensure your project has source files in src/, app/, lib/, or components/.');

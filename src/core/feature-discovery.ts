@@ -1,6 +1,6 @@
 import { join, relative, dirname, basename, extname } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
-import type { CodebaseProfile } from './detector.js';
+import type { CodebaseProfile, WorkspacePackage } from './detector.js';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -136,35 +136,36 @@ function classifyFile(file: string): string | null {
 
 // ── Main Discovery ─────────────────────────────────────────────────────
 
-export async function discoverFeatures(
-  root: string,
-  profile: CodebaseProfile,
-): Promise<FeatureMap> {
-  // 1. Collect all source files relative to root
+/**
+ * Discover features in a single directory root (the original non-monorepo path).
+ * File paths are relative to `relativeRoot`.
+ */
+function discoverFeaturesForSingleRoot(
+  scanDir: string,
+  relativeRoot: string,
+): { features: FeatureBoundary[]; rootFiles: string[] } {
   const allFiles: string[] = [];
   for (const dir of SOURCE_ROOTS) {
-    const fullDir = join(root, dir);
+    const fullDir = join(scanDir, dir);
     if (existsSync(fullDir)) {
-      allFiles.push(...walkSourceFiles(fullDir, root));
+      allFiles.push(...walkSourceFiles(fullDir, relativeRoot));
     }
   }
 
   // Also pick up files at root level (e.g. middleware.ts)
   try {
-    const rootEntries = readdirSync(root, { withFileTypes: true });
+    const rootEntries = readdirSync(scanDir, { withFileTypes: true });
     for (const entry of rootEntries) {
       if (entry.isFile() && SOURCE_EXTS.test(entry.name) && !entry.name.startsWith('.')) {
         if (!/\.(test|spec|config)\./i.test(entry.name)) {
-          allFiles.push(entry.name);
+          allFiles.push(relative(relativeRoot, join(scanDir, entry.name)));
         }
       }
     }
   } catch { /* ignore */ }
 
-  // Deduplicate
   const files = Array.from(new Set(allFiles));
 
-  // 2. Group files by module path
   const moduleGroups = new Map<string, string[]>();
   const rootFiles: string[] = [];
 
@@ -179,15 +180,11 @@ export async function discoverFeatures(
     }
   }
 
-  // 3. Build features
   const features: FeatureBoundary[] = [];
 
   for (const [modulePath, groupFiles] of moduleGroups) {
-    // Derive display name from the last segment of the path
     const segments = modulePath.split('/');
     const name = toKebabCase(segments[segments.length - 1]);
-
-    // Find actual source directory (before route group stripping)
     const directory = findCommonDirectory(groupFiles);
 
     features.push({
@@ -199,10 +196,110 @@ export async function discoverFeatures(
     });
   }
 
-  // Sort by module path for consistent output
-  features.sort((a, b) => a.modulePath.localeCompare(b.modulePath));
+  return { features, rootFiles };
+}
+
+/**
+ * Discover features inside a single workspace package, namespacing module paths.
+ * File paths are relative to monorepoRoot (for AST analyzer compatibility).
+ */
+function discoverWorkspaceFeatures(
+  monorepoRoot: string,
+  workspace: WorkspacePackage,
+): { features: FeatureBoundary[]; rootFiles: string[] } {
+  const allFiles: string[] = [];
+
+  for (const dir of SOURCE_ROOTS) {
+    const fullDir = join(workspace.directory, dir);
+    if (existsSync(fullDir)) {
+      // Paths relative to monorepo root so AST analyzer can resolve them
+      allFiles.push(...walkSourceFiles(fullDir, monorepoRoot));
+    }
+  }
+
+  // Root-level files in the workspace (e.g. apps/web/middleware.ts)
+  try {
+    const entries = readdirSync(workspace.directory, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isFile() && SOURCE_EXTS.test(entry.name) && !entry.name.startsWith('.')) {
+        if (!/\.(test|spec|config)\./i.test(entry.name)) {
+          allFiles.push(relative(monorepoRoot, join(workspace.directory, entry.name)));
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  const files = Array.from(new Set(allFiles));
+
+  const moduleGroups = new Map<string, string[]>();
+  const rootFiles: string[] = [];
+
+  for (const file of files) {
+    // Classify using path relative to the workspace root (not monorepo root)
+    const wsRelative = relative(workspace.directory, join(monorepoRoot, file));
+    const modulePath = classifyFile(wsRelative);
+
+    if (modulePath === null) {
+      rootFiles.push(file); // still monorepo-root-relative
+    } else {
+      // Namespace with workspace name: "src/auth" → "web/src/auth"
+      const namespacedPath = `${workspace.name}/${modulePath}`;
+      const existing = moduleGroups.get(namespacedPath) ?? [];
+      existing.push(file); // monorepo-root-relative
+      moduleGroups.set(namespacedPath, existing);
+    }
+  }
+
+  const features: FeatureBoundary[] = [];
+
+  for (const [modulePath, groupFiles] of moduleGroups) {
+    const segments = modulePath.split('/');
+    const name = toKebabCase(segments[segments.length - 1]);
+    const directory = findCommonDirectory(groupFiles);
+
+    features.push({
+      name,
+      modulePath,
+      directory,
+      files: groupFiles,
+      entryPoint: findEntryPoint(groupFiles),
+    });
+  }
 
   return { features, rootFiles };
+}
+
+export async function discoverFeatures(
+  root: string,
+  _profile: CodebaseProfile,
+  workspaces?: WorkspacePackage[],
+): Promise<FeatureMap> {
+  if (!workspaces || workspaces.length === 0) {
+    // Non-monorepo: scan root directory only (existing behavior)
+    const result = discoverFeaturesForSingleRoot(root, root);
+    result.features.sort((a, b) => a.modulePath.localeCompare(b.modulePath));
+    return result;
+  }
+
+  // Monorepo: scan root + each workspace
+  const allFeatures: FeatureBoundary[] = [];
+  const allRootFiles: string[] = [];
+
+  // Scan monorepo root (may have shared code)
+  const rootResult = discoverFeaturesForSingleRoot(root, root);
+  allFeatures.push(...rootResult.features);
+  allRootFiles.push(...rootResult.rootFiles);
+
+  // Scan each workspace
+  for (const ws of workspaces) {
+    const wsResult = discoverWorkspaceFeatures(root, ws);
+    allFeatures.push(...wsResult.features);
+    allRootFiles.push(...wsResult.rootFiles);
+  }
+
+  allFeatures.sort((a, b) => a.modulePath.localeCompare(b.modulePath));
+
+  return { features: allFeatures, rootFiles: allRootFiles };
 }
 
 function findCommonDirectory(files: string[]): string {

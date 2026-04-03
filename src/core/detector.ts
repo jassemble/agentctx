@@ -1,5 +1,6 @@
-import { join } from 'node:path';
-import { existsSync, readFileSync } from 'node:fs';
+import { join, basename, relative } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { parse as parseYaml } from 'yaml';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -182,4 +183,141 @@ export function suggestSkillNames(profile: CodebaseProfile, projectRoot: string)
   }
 
   return skills;
+}
+
+// ── Workspace resolution ──────────────────────────────────────────────
+
+export interface WorkspacePackage {
+  name: string;         // display name: "web", "backend"
+  directory: string;    // absolute path to workspace root
+  relativePath: string; // relative to monorepo root: "apps/web"
+}
+
+/**
+ * Expand a single workspace glob pattern into directory paths (relative to projectRoot).
+ * Handles: "apps/*", "packages/**", "tools/cli" (literal).
+ */
+function expandWorkspaceGlob(projectRoot: string, pattern: string): string[] {
+  pattern = pattern.replace(/\/$/, '');
+
+  if (pattern.includes('**')) {
+    // Recursive: walk all subdirectories of the prefix that contain package.json
+    const prefix = pattern.split('**')[0].replace(/\/$/, '');
+    const base = join(projectRoot, prefix);
+    if (!existsSync(base)) return [];
+    const results: string[] = [];
+    function walk(dir: string): void {
+      let entries;
+      try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+        const full = join(dir, entry.name);
+        if (existsSync(join(full, 'package.json'))) {
+          results.push(relative(projectRoot, full));
+        }
+        walk(full);
+      }
+    }
+    walk(base);
+    return results;
+  }
+
+  if (pattern.includes('*')) {
+    // Single-level wildcard: list immediate child directories of the prefix
+    const prefix = pattern.split('*')[0].replace(/\/$/, '');
+    const base = join(projectRoot, prefix);
+    if (!existsSync(base)) return [];
+    try {
+      return readdirSync(base, { withFileTypes: true })
+        .filter(e => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
+        .map(e => prefix ? `${prefix}/${e.name}`.replace(/^\//, '') : e.name);
+    } catch { return []; }
+  }
+
+  // Literal path
+  return [pattern];
+}
+
+/**
+ * Resolve workspace packages from package.json workspaces and/or pnpm-workspace.yaml.
+ * Returns only directories that exist and contain a package.json.
+ */
+export function resolveWorkspaces(projectRoot: string): WorkspacePackage[] {
+  const globs: string[] = [];
+
+  // 1. package.json workspaces
+  const pkgPath = join(projectRoot, 'package.json');
+  if (existsSync(pkgPath)) {
+    const pkg = readJsonSafe(pkgPath);
+    if (pkg) {
+      const ws = pkg.workspaces;
+      if (Array.isArray(ws)) {
+        globs.push(...ws.map(String));
+      } else if (ws && typeof ws === 'object' && Array.isArray((ws as Record<string, unknown>).packages)) {
+        globs.push(...((ws as Record<string, unknown>).packages as string[]));
+      }
+    }
+  }
+
+  // 2. pnpm-workspace.yaml
+  const pnpmPath = join(projectRoot, 'pnpm-workspace.yaml');
+  if (existsSync(pnpmPath)) {
+    try {
+      const content = readFileSync(pnpmPath, 'utf-8');
+      const parsed = parseYaml(content) as Record<string, unknown>;
+      if (Array.isArray(parsed.packages)) {
+        globs.push(...parsed.packages.filter((p): p is string => typeof p === 'string'));
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Deduplicate globs
+  const uniqueGlobs = Array.from(new Set(globs));
+
+  // 3. Expand globs → relative directory paths
+  const allPaths: string[] = [];
+  for (const g of uniqueGlobs) {
+    // Skip negation patterns (e.g., "!packages/internal")
+    if (g.startsWith('!')) continue;
+    allPaths.push(...expandWorkspaceGlob(projectRoot, g));
+  }
+
+  // Deduplicate paths
+  const uniquePaths = Array.from(new Set(allPaths));
+
+  // 4. Filter: must exist and contain package.json
+  const validPaths = uniquePaths.filter(rel => {
+    const abs = join(projectRoot, rel);
+    return existsSync(abs) && existsSync(join(abs, 'package.json'));
+  });
+
+  // 5. Build WorkspacePackage objects
+  const packages: WorkspacePackage[] = [];
+  const usedNames = new Set<string>();
+
+  for (const rel of validPaths) {
+    const abs = join(projectRoot, rel);
+    let name = basename(rel);
+
+    // Try to read name from workspace's package.json
+    const wsPkg = readJsonSafe(join(abs, 'package.json'));
+    if (wsPkg && typeof wsPkg.name === 'string') {
+      let pkgName = wsPkg.name as string;
+      // Strip scope: "@org/web" → "web"
+      if (pkgName.startsWith('@') && pkgName.includes('/')) {
+        pkgName = pkgName.split('/')[1];
+      }
+      name = pkgName;
+    }
+
+    // Handle name collisions
+    if (usedNames.has(name)) {
+      name = rel.replace(/\//g, '-');
+    }
+    usedNames.add(name);
+
+    packages.push({ name, directory: abs, relativePath: rel });
+  }
+
+  return packages;
 }
