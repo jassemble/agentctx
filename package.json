@@ -1,6 +1,6 @@
 {
   "name": "agentctx-cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Unified agent context management CLI — one source of truth, many AI agent outputs",
   "type": "module",
   "bin": {
