@@ -11,7 +11,6 @@ interface InitOptions {
   import?: boolean;
   interactive?: boolean;
   force?: boolean;
-  scan?: boolean;
   ai?: boolean;
   app?: string;
   agent?: string;
@@ -402,22 +401,16 @@ async function initWithSkills(
   // Generate outputs
   await generateOutputs(projectRoot, agentctxDir);
 
-  p.outro('Done! Your context is now managed by agentctx.');
+  // Scan codebase (AST module generation)
+  console.log('');
+  const { scanCommand } = await import('./scan.js');
+  await scanCommand({});
 
-  logger.dim('\nComplete setup in your AI tool:\n');
-  logger.dim('  Claude Code:');
-  logger.dim('    Run /agentctx-sync to generate module docs from your codebase\n');
-  logger.dim('  Cursor:');
-  logger.dim('    Ask: "Read .agentctx/context/ and update architecture.md and modules/"\n');
-  logger.dim('  Other tools:');
-  logger.dim('    Ask your AI to read .agentctx/context/ and document your codebase\n');
-  logger.dim('  Review: .agentctx/context/conventions/*.md — customize for your project');
+  p.outro('Done! Your project is fully set up.');
 
-  if (options.scan) {
-    console.log('');
-    const { scanCommand } = await import('./scan.js');
-    await scanCommand({ ai: true });
-  }
+  logger.dim('\n  Review: .agentctx/context/conventions/*.md — customize for your project');
+  logger.dim('  Modules: .agentctx/context/modules/ — auto-generated from your code');
+  logger.dim('  Outputs: CLAUDE.md, .cursor/rules/ — regenerate with `agentctx generate`\n');
 }
 
 // ── Interactive init flow ──────────────────────────────────────────────
@@ -815,22 +808,16 @@ async function initInteractive(
   // Generate outputs
   await generateOutputs(projectRoot, agentctxDir);
 
-  p.outro('Done! Your context is now managed by agentctx.');
+  // Scan codebase (AST module generation)
+  console.log('');
+  const { scanCommand } = await import('./scan.js');
+  await scanCommand({});
 
-  logger.dim('\nComplete setup in your AI tool:\n');
-  logger.dim('  Claude Code:');
-  logger.dim('    Run /agentctx-sync to generate module docs from your codebase\n');
-  logger.dim('  Cursor:');
-  logger.dim('    Ask: "Read .agentctx/context/ and update architecture.md and modules/"\n');
-  logger.dim('  Other tools:');
-  logger.dim('    Ask your AI to read .agentctx/context/ and document your codebase\n');
-  logger.dim('  Review: .agentctx/context/conventions/*.md — customize for your project');
+  p.outro('Done! Your project is fully set up.');
 
-  if (options.scan) {
-    console.log('');
-    const { scanCommand } = await import('./scan.js');
-    await scanCommand({ ai: true });
-  }
+  logger.dim('\n  Review: .agentctx/context/conventions/*.md — customize for your project');
+  logger.dim('  Modules: .agentctx/context/modules/ — auto-generated from your code');
+  logger.dim('  Outputs: CLAUDE.md, .cursor/rules/ — regenerate with `agentctx generate`\n');
 }
 
 // ── Shared output generation ───────────────────────────────────────────

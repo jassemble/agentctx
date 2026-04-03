@@ -29,6 +29,7 @@ commands:
   - commands/overdrive.md
   - commands/quieter.md
   - commands/typeset.md
+  - commands/teach-design.md
 references:
   - reference/typography.md
   - reference/color.md

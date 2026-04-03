@@ -1,10 +1,10 @@
 {
-  "name": "agentctx",
-  "version": "0.1.0",
+  "name": "agentctx-cli",
+  "version": "0.1.2",
   "description": "Unified agent context management CLI — one source of truth, many AI agent outputs",
   "type": "module",
   "bin": {
-    "agentctx": "./dist/index.js"
+    "agentctx": "dist/index.js"
   },
   "files": [
     "dist",
@@ -35,6 +35,14 @@
   ],
   "author": "Jaspreet Singh",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jassemble/agentctx.git"
+  },
+  "homepage": "https://github.com/jassemble/agentctx#readme",
+  "bugs": {
+    "url": "https://github.com/jassemble/agentctx/issues"
+  },
   "dependencies": {
     "commander": "^13.1.0",
     "typescript": "^5.7.0",

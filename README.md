@@ -22,12 +22,21 @@ Every AI coding tool needs its own context file. Developers manually write and m
 
 But it goes further: spec-driven workflow automation, design quality commands, 156 AI agent specialists, health monitoring, and a live dashboard.
 
-```
-agentctx init nextjs typescript tailwind design
+```bash
+npm install -g agentctx-cli
+agentctx init
 ```
 
-That single command gives you:
+Then in Claude Code:
+```
+/agentctx-sync
+```
+
+That's it. `init` walks you through setup interactively — picks your stack, skills, agents, and output targets. `/agentctx-sync` enriches your modules with behavior summaries.
+
+You get:
 - Production-grade conventions for your stack
+- AST-scanned codebase modules (types, functions, components, directives)
 - 38+ slash commands for workflow and design
 - Output files for Claude Code, Cursor, Copilot, Gemini, Windsurf, and more
 - A spec-driven development workflow with approval gates
@@ -36,27 +45,21 @@ That single command gives you:
 
 ```bash
 # 1. Install
-npm install -g agentctx
+npm install -g agentctx-cli
 
-# 2. Initialize with skills for your stack
-agentctx init nextjs typescript tailwind
+# 2. Initialize (interactive — picks skills, agents, outputs for you)
+agentctx init
 
-# 3. Scan your codebase (generates module files via AST analysis)
-agentctx scan
-
-# 4. Generate output for all your AI tools (CLAUDE.md, .cursorrules, etc.)
-agentctx generate
-
-# 5. In Claude Code, enrich modules with behavior summaries
+# 3. In Claude Code, enrich modules with behavior summaries
 /agentctx-sync
 ```
 
 ### Everyday Commands
 
 ```bash
-agentctx scan              # Re-scan after code changes (AST + tech stack detection)
-agentctx generate          # Rebuild output files from context
-agentctx doctor            # Health check — are modules stale? missing context?
+agentctx scan              # Re-scan after code changes (AST modules + tech stack)
+agentctx generate          # Rebuild output files (CLAUDE.md, .cursorrules, etc.)
+agentctx doctor            # Health check — stale modules? missing context?
 agentctx dashboard         # Open live project dashboard
 ```
 
