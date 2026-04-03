@@ -18,28 +18,7 @@
 
 Every AI coding tool needs its own context file. Developers manually write and maintain `CLAUDE.md`, `.cursorrules`, `copilot-instructions.md` — duplicating conventions, letting them drift, and losing project knowledge between sessions.
 
-**agentctx** treats project context as code — modular, composable, version-controlled — and generates output for **10 different AI tools** from a single source of truth.
-
-But it goes further: spec-driven workflow automation, design quality commands, 156 AI agent specialists, health monitoring, and a live dashboard.
-
-```bash
-npm install -g agentctx-cli
-agentctx init
-```
-
-Then in Claude Code:
-```
-/agentctx-sync
-```
-
-That's it. `init` walks you through setup interactively — picks your stack, skills, agents, and output targets. `/agentctx-sync` enriches your modules with behavior summaries.
-
-You get:
-- Production-grade conventions for your stack
-- AST-scanned codebase modules (types, functions, components, directives)
-- 38+ slash commands for workflow and design
-- Output files for Claude Code, Cursor, Copilot, Gemini, Windsurf, and more
-- A spec-driven development workflow with approval gates
+**agentctx** treats project context as code — modular, composable, version-controlled — and generates output for **10 different AI tools** from a single source of truth. Plus: spec-driven workflow, design commands, 156 AI agent specialists, health monitoring, and a live dashboard.
 
 ## Quick Start
 
@@ -47,12 +26,21 @@ You get:
 # 1. Install
 npm install -g agentctx-cli
 
-# 2. Initialize (interactive — picks skills, agents, outputs for you)
+# 2. Initialize — interactive setup that detects your stack,
+#    picks skills, selects agents, scans your codebase via AST,
+#    and generates output files. One command, fully set up.
 agentctx init
 
 # 3. In Claude Code, enrich modules with behavior summaries
 /agentctx-sync
 ```
+
+You get:
+- Production-grade conventions for your stack
+- AST-scanned codebase modules (types, functions, components, directives)
+- 38+ slash commands for workflow and design
+- Output files for Claude Code, Cursor, Copilot, Gemini, Windsurf, and more
+- A spec-driven development workflow with approval gates
 
 ### Everyday Commands
 
