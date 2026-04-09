@@ -1,4 +1,4 @@
-Synchronize the project's AI context with the codebase. Incrementally enriches only stale or new modules — safe to run frequently without burning token budget.
+Synchronize the project's AI context with the codebase. Uses parallel agents to enrich modules concurrently — safe to run frequently without burning token budget.
 
 ## Steps
 
@@ -18,39 +18,57 @@ Synchronize the project's AI context with the codebase. Incrementally enriches o
    - If `needsEnrichment` has more than 10 items → show the list and ask the user: "N modules need enrichment. Proceed? (Y/n)"
    - If `needsEnrichment` has more than 30 items → warn: "Only the first 30 modules will be processed. Run /agentctx-sync again for remaining." and trim the list to 30
 
-4. **Enrich modules in batches of 5**:
-   Process modules from the `needsEnrichment` list in batches of 5:
+4. **Enrich modules in parallel agents**:
 
-   For each batch:
-   a. Read each module file — note the `source-files` listed in the YAML frontmatter
-   b. Read each source file listed (only the files for this batch's modules)
-   c. For every function in the `## Functions` section, append a brief behavior description after the signature:
-      - What it does (1 sentence)
-      - Key operations: database calls, API requests, validation, side effects
-      - Error handling approach
-   d. For every component in the `## Components` section, append:
-      - What it renders and key user interactions
-      - Important state management or side effects
-   e. If there are cross-cutting concerns (env vars, auth patterns, error boundaries), add a `## Behavior Notes` section at the end
-   f. **Update the YAML frontmatter** — add or update these two fields after the `source-hash` line:
-      ```yaml
-      enriched-at: <current ISO 8601 timestamp>
-      enriched-hash: <copy the source-hash value from the same frontmatter>
-      ```
-      Do NOT modify the `source-hash` value itself.
-   g. Write all enriched module files back to disk
-   h. Print "Enriched batch N/M: <module names>"
+   Split the `needsEnrichment` list into groups of 5. Spawn one background Agent per group — all groups run in parallel.
 
-   Continue with the next batch until all modules from the list are processed.
+   **Each agent receives this prompt** (substitute `MODULE_PATHS` and `PROJECT_ROOT`):
+
+   > You are enriching agentctx module files for `PROJECT_ROOT`.
+   >
+   > Your modules to enrich: `MODULE_PATHS` (comma-separated list of module paths, e.g. `app/auth/login`, `lib/stripe`)
+   >
+   > For each module:
+   > 1. Read the module file at `.agentctx/context/modules/<modulePath>.md`
+   > 2. Note the `source-files` listed in the YAML frontmatter
+   > 3. Read each source file listed
+   > 4. For every function in the `## Functions` section, append a brief behavior description after the signature:
+   >    - What it does (1 sentence)
+   >    - Key operations: database calls, API requests, validation, side effects
+   >    - Error handling approach
+   > 5. For every component in the `## Components` section, append:
+   >    - What it renders and key user interactions
+   >    - Important state management or side effects
+   > 6. If there are cross-cutting concerns (env vars, auth patterns, error boundaries), add a `## Behavior Notes` section at the end
+   > 7. **Update the YAML frontmatter** — add or update these two fields after the `source-hash` line:
+   >    ```yaml
+   >    enriched-at: <current ISO 8601 timestamp>
+   >    enriched-hash: <copy the source-hash value from the same frontmatter>
+   >    ```
+   >    Do NOT modify the `source-hash` value itself.
+   > 8. Write the enriched module file back to disk
+   >
+   > Keep behavior descriptions to 1-2 sentences max per function/component.
+   > Only enrich exported/public functions — skip internal helpers unless they contain critical logic.
+   > Don't duplicate source code — describe intent and key operations.
+   > When done, reply: "Enriched: <list of module names>"
+
+   **Spawn all agents in the same message** (parallel, background). Wait for all to report back before proceeding.
+
+   After all agents complete, print a summary:
+   ```
+   Enriched N modules across M agents
+   ```
 
 5. **Generate high-level context files** (only if any modules were enriched in step 4):
-   After reading source files during enrichment, write or update these in `.agentctx/context/`:
+   After the agents complete, write or update these in `.agentctx/context/`:
    a. `architecture.md` — Project structure, key directories, data flow between modules
    b. `patterns.md` — Key patterns: state management, error handling, auth, data fetching
    c. `style.md` — Code style conventions: naming, file organization, imports
    - Keep each file focused and concise (200-500 words)
    - Be specific to THIS project — reference actual file paths and patterns observed
    - If these files already exist, update them with any new patterns discovered
+   - Base these on the source files that were read during enrichment
 
 6. **Regenerate outputs**: run `agentctx generate` to rebuild CLAUDE.md and other output files
 
@@ -108,10 +126,17 @@ enriched-hash: a1b2c3d4
 ---
 ```
 
+## Parallelism model
+
+- Groups of 5 modules → 1 agent each
+- All agents spawned in a single message (background)
+- Parent waits for all to complete before running generate
+- Example: 20 modules → 4 agents running concurrently instead of 4 sequential batches
+
 ## Important
 - Module files mirror the source directory structure — enrich files where they are
 - Keep behavior descriptions to 1-2 sentences max per function/component
 - Only enrich exported/public functions — skip internal helpers unless they contain critical logic
 - Don't duplicate source code — describe intent and key operations
 - The enriched-at and enriched-hash fields are REQUIRED — they prevent re-processing on subsequent runs
-- Batching keeps context window manageable — do not skip batching even if the list is small
+- Each agent is isolated — no shared state, no conflicts (each handles different module files)
