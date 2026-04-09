@@ -516,7 +516,7 @@ export async function scanCommand(options: ScanOptions): Promise<void> {
 
     const { discoverFeatures } = await import('../core/feature-discovery.js');
     const { analyzeFile } = await import('../core/ast-analyzer.js');
-    const { assembleModule, assembleRootModule } = await import('../core/module-assembler.js');
+    const { assembleModule, assembleRootModule, computeSourceHash } = await import('../core/module-assembler.js');
     const { mkdir } = await import('node:fs/promises');
     const { dirname: pathDirname } = await import('node:path');
 
@@ -559,6 +559,23 @@ export async function scanCommand(options: ScanOptions): Promise<void> {
     let totalTypes = 0;
     let totalFunctions = 0;
     let totalComponents = 0;
+    let skipped = 0;
+
+    // Helper: extract enrichment fields from existing module frontmatter
+    function parseEnrichmentFields(content: string): { sourceHash?: string; enrichedAt?: string; enrichedHash?: string } {
+      const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
+      if (!fmMatch) return {};
+      const fm = fmMatch[1];
+      const getField = (key: string) => {
+        const m = fm.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'));
+        return m?.[1]?.trim();
+      };
+      return {
+        sourceHash: getField('source-hash'),
+        enrichedAt: getField('enriched-at'),
+        enrichedHash: getField('enriched-hash'),
+      };
+    }
 
     for (const feature of featureMap.features) {
       const featureAnalyses = feature.files
@@ -567,17 +584,47 @@ export async function scanCommand(options: ScanOptions): Promise<void> {
 
       if (featureAnalyses.length === 0) continue;
 
+      const moduleFile = `${feature.modulePath}.md`;
+      const fullPath = join(modulesDir, moduleFile);
+
+      // Incremental: check if module is unchanged
+      const newHash = computeSourceHash(projectRoot, feature.files);
+      let extraFrontmatter: Record<string, string> | undefined;
+
+      if (existsSync(fullPath)) {
+        try {
+          const existing = readFileSync(fullPath, 'utf-8');
+          const fields = parseEnrichmentFields(existing);
+
+          // Skip if source files unchanged
+          if (fields.sourceHash === newHash) {
+            skipped++;
+            writtenModules.push(`context/modules/${moduleFile}`);
+            totalTypes += featureAnalyses.flatMap(a => a.types).filter(t => t.exported).length;
+            totalFunctions += featureAnalyses.flatMap(a => a.functions).filter(f => f.exported).length;
+            totalComponents += featureAnalyses.flatMap(a => a.components).length;
+            continue;
+          }
+
+          // Source changed — carry forward enrichment markers (now stale)
+          if (fields.enrichedAt && fields.enrichedHash) {
+            extraFrontmatter = {
+              'enriched-at': fields.enrichedAt,
+              'enriched-hash': fields.enrichedHash,
+            };
+          }
+        } catch { /* proceed with full write */ }
+      }
+
       const markdown = assembleModule(
         feature,
         featureAnalyses,
         featureMap.features,
         allAnalysesArray,
         projectRoot,
+        extraFrontmatter ? { extraFrontmatter } : undefined,
       );
 
-      // Mirror source directory: components/theme → modules/components/theme.md
-      const moduleFile = `${feature.modulePath}.md`;
-      const fullPath = join(modulesDir, moduleFile);
       await mkdir(pathDirname(fullPath), { recursive: true });
       await writeFile(fullPath, markdown, 'utf-8');
       writtenModules.push(`context/modules/${moduleFile}`);
@@ -591,18 +638,43 @@ export async function scanCommand(options: ScanOptions): Promise<void> {
 
     // Generate root module for files at source roots (app/layout.tsx, app/page.tsx)
     if (featureMap.rootFiles.length > 0) {
-      const rootMarkdown = assembleRootModule(
-        featureMap.rootFiles,
-        allAnalysesArray,
-        projectRoot,
-      );
-      if (rootMarkdown) {
-        const rootPath = join(modulesDir, '_root.md');
-        await mkdir(pathDirname(rootPath), { recursive: true });
-        await writeFile(rootPath, rootMarkdown, 'utf-8');
-        writtenModules.push('context/modules/_root.md');
-        logger.success(`Module: _root (${featureMap.rootFiles.length} files)`);
+      const rootPath = join(modulesDir, '_root.md');
+      const newRootHash = computeSourceHash(projectRoot, featureMap.rootFiles);
+      let rootExtraFm: Record<string, string> | undefined;
+      let skipRoot = false;
+
+      if (existsSync(rootPath)) {
+        try {
+          const existing = readFileSync(rootPath, 'utf-8');
+          const fields = parseEnrichmentFields(existing);
+          if (fields.sourceHash === newRootHash) {
+            skipRoot = true;
+            skipped++;
+            writtenModules.push('context/modules/_root.md');
+          } else if (fields.enrichedAt && fields.enrichedHash) {
+            rootExtraFm = { 'enriched-at': fields.enrichedAt, 'enriched-hash': fields.enrichedHash };
+          }
+        } catch { /* proceed */ }
       }
+
+      if (!skipRoot) {
+        const rootMarkdown = assembleRootModule(
+          featureMap.rootFiles,
+          allAnalysesArray,
+          projectRoot,
+          rootExtraFm ? { extraFrontmatter: rootExtraFm } : undefined,
+        );
+        if (rootMarkdown) {
+          await mkdir(pathDirname(rootPath), { recursive: true });
+          await writeFile(rootPath, rootMarkdown, 'utf-8');
+          writtenModules.push('context/modules/_root.md');
+          logger.success(`Module: _root (${featureMap.rootFiles.length} files)`);
+        }
+      }
+    }
+
+    if (skipped > 0) {
+      logger.dim(`Skipped ${skipped} unchanged module(s)`);
     }
 
     // Update config.yaml

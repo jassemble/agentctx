@@ -128,6 +128,15 @@ program
     await scanCommand(options);
   });
 
+program
+  .command('sync-status')
+  .description('Show enrichment status of all modules (fresh/stale/unenriched)')
+  .option('--json', 'Output machine-readable JSON')
+  .action(async (options) => {
+    const { syncStatusCommand } = await import('./commands/sync-status.js');
+    await syncStatusCommand(options);
+  });
+
 // ── UI ────────────────────────────────────────────────────────────────
 
 program

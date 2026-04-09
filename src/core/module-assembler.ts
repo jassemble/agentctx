@@ -11,6 +11,7 @@ export interface AssembleOptions {
   maxFunctions?: number;
   maxComponents?: number;
   maxKeyFiles?: number;
+  extraFrontmatter?: Record<string, string>;
 }
 
 const DEFAULTS: Required<AssembleOptions> = {
@@ -164,6 +165,11 @@ export function assembleModule(
     lines.push(`  # ... and ${feature.files.length - 20} more`);
   }
   lines.push(`source-hash: ${sourceHash}`);
+  if (opts.extraFrontmatter) {
+    for (const [key, value] of Object.entries(opts.extraFrontmatter)) {
+      lines.push(`${key}: ${value}`);
+    }
+  }
   lines.push('---');
 
   // ── Title ──
@@ -300,6 +306,11 @@ export function assembleRootModule(
     lines.push(`  - ${f}`);
   }
   lines.push(`source-hash: ${sourceHash}`);
+  if (opts.extraFrontmatter) {
+    for (const [key, value] of Object.entries(opts.extraFrontmatter)) {
+      lines.push(`${key}: ${value}`);
+    }
+  }
   lines.push('---');
   lines.push('# Root');
   lines.push('');
