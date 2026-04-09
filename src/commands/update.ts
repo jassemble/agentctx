@@ -95,7 +95,9 @@ export async function updateCommand(options: { dryRun?: boolean }): Promise<void
     // Compare command files
     for (const cmdPath of resolved.yaml.commands) {
       const builtinFullPath = join(resolved.dir, cmdPath);
-      const installedPath = join(projectRoot, '.claude', 'commands', basename(cmdPath));
+      // Commands are installed under .claude/commands/<skillName>/<filename>
+      const skillCmdRelPath = join(skillName, basename(cmdPath));
+      const installedPath = join(projectRoot, '.claude', 'commands', skillCmdRelPath);
 
       if (!existsSync(builtinFullPath)) continue;
 
@@ -111,7 +113,7 @@ export async function updateCommand(options: { dryRun?: boolean }): Promise<void
 
       const changed = builtinContent !== installedContent;
       changes.push({
-        relativePath: `.claude/commands/${basename(cmdPath)}`,
+        relativePath: `.claude/commands/${skillCmdRelPath}`,
         type: 'command',
         oldLines: installedLines,
         newLines: builtinLines,
@@ -198,7 +200,8 @@ export async function updateCommand(options: { dryRun?: boolean }): Promise<void
         const cmdEntry = resolved.yaml.commands.find(c => basename(c) === filename);
         if (!cmdEntry) continue;
         srcPath = join(resolved.dir, cmdEntry);
-        destPath = join(projectRoot, '.claude', 'commands', filename);
+        // Preserve the skill subdirectory: .claude/commands/<skillName>/<filename>
+        destPath = join(projectRoot, '.claude', 'commands', update.skillName, filename);
       }
 
       try {
